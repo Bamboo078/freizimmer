@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "freizimmer-web-mock",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["test/dev-mock.mjs"],
+      "port": 3000
+    }
+  ]
+}

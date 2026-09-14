@@ -1,0 +1,14 @@
+# Abhängigkeiten (werden nicht eingecheckt)
+node_modules/
+
+# Vercel
+.vercel
+
+# Umgebungsvariablen – hier hätte ein Zugangscode nichts verloren
+.env
+.env.*
+
+# Betriebssystem-Kram
+.DS_Store
+Thumbs.db
+desktop.ini

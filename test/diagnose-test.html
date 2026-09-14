@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="de" theme="light">
+<head><meta charset="utf-8"><title>Freizimmer – Diagnose-Test</title>
+<style>body{font:14px/1.5 system-ui,sans-serif;margin:24px}#out{font-family:ui-monospace,monospace;white-space:pre-wrap;font-size:12.5px}
+.ok{color:#0a7d3f}.fail{color:#b42318;font-weight:600}</style></head>
+<body>
+<h1>Freizimmer – Diagnose-Test</h1>
+<p>Prüft, ob <code>diagnose.js</code> durchläuft und einen sinnvollen Bericht erzeugt.
+   (Die Hostnamen-Prüfung wird für den Test überbrückt.)</p>
+<div id="app"></div>
+<div id="out">läuft …</div>
+
+<script>
+// isy-Attrappe
+const pinia = { _s: new Map([
+  ['token', { tokenManager: { getToken: () => 'MOCK.' + 'z'.repeat(40) } }],
+  ['user', {}],
+]) };
+document.querySelector('#app').__vue_app__ = { _context: { provides: { pinia } } };
+
+const ROOMS = [
+  { id: '/resources/1', _id: 1, descShort: 'HL1.02', description: 'Instr Unt', partOf: null, partOfChildren: [] },
+  { id: '/resources/2', _id: 2, descShort: 'HL2.02', description: 'Ch Unt, 28 Pl', partOf: null, partOfChildren: [] },
+  { id: '/resources/3', _id: 3, descShort: 'HL3.01', description: 'Unt, 26 Pl', partOf: null, partOfChildren: [] },
+  { id: '/resources/10', _id: 10, descShort: 'HL3.02', description: 'Unt, 26 Pl', partOf: null, partOfChildren: [] },
+];
+const p = (n) => String(n).padStart(2, '0');
+const d = new Date();
+const day = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+const node = {
+  id: '/messages/1', title: 'M hcs 3Mf', calculatedTitleShort: 'M hcs 3Mf', agendaResourceTitle: 'M hcs 3Mf',
+  dtFrom: day + 'T08:45:00+02:00', dtTo: day + 'T09:30:00+02:00',
+  resources: { edges: [{ node: { id: '/mr/1', resource: { id: '/resources/10', descShort: 'HL3.02' } } }] },
+};
+
+const seen = [];
+window.fetch = async (url, init) => {
+  const q = JSON.parse(init.body).query;
+  seen.push(q.match(/query (\w+)/)[1]);
+  let data;
+  if (q.includes('freizimmerRooms')) data = { resources: ROOMS };
+  else data = { messages: { pageInfo: { hasNextPage: false, endCursor: null }, edges: [{ node }] } };
+  return { ok: true, status: 200, json: async () => ({ data }), text: async () => '' };
+};
+</script>
+
+<script>
+const out = document.getElementById('out');
+const lines = [];
+let fail = 0;
+const check = (n, c, extra) => { if (c) lines.push('  OK   ' + n);
+  else { fail++; lines.push('  FAIL ' + n + (extra !== undefined ? ' -> ' + extra : '')); } };
+
+window.addEventListener('load', async () => {
+  try {
+    const src = await new Promise((res, rej) => {
+      const x = new XMLHttpRequest();
+      x.open('GET', '../diagnose.js');
+      x.onload = () => res(x.responseText);
+      x.onerror = rej;
+      x.send();
+    });
+
+    // Hostnamen-Prüfung für den Test ausschalten (sonst bricht das Script hier ab).
+    const patched = src.replace(
+      'if (!/^isy/.test(location.hostname) || !/ksr\\.ch$/.test(location.hostname)) {',
+      'if (false) {'
+    );
+    check('Hostnamen-Prüfung gefunden und überbrückt', patched !== src);
+
+    (0, eval)(patched);
+    await new Promise((r) => setTimeout(r, 800));
+
+    const rep = window.__fzReport || '';
+    check('Bericht erzeugt', rep.length > 100, rep.length);
+    check('Token erkannt', /1\. Token:\s+OK/.test(rep));
+    check('Räume gezählt', /2\. Räume:\s+4 gefunden/.test(rep));
+    check('Strategie A geprüft', /3\. Sammelabfrage \(Strategie A\): OK, 1 Belegungen/.test(rep));
+    check('Strategie B geprüft', /4\. Pro-Raum-Abfrage \(Strategie B\): OK/.test(rep));
+    check('dtFrom im Bericht', rep.includes('dtFrom=' + day));
+    check('Fazit positiv', /FAZIT: Sieht gut aus/.test(rep));
+    check('Alle 3 Abfragen abgesetzt',
+          seen.includes('freizimmerRooms') && seen.includes('freizimmerOccupied') &&
+          seen.includes('freizimmerByRoom'), seen.join(','));
+
+    out.className = fail ? 'fail' : 'ok';
+    out.textContent = (fail ? fail + ' FEHLER' : 'DIAGNOSE OK') + '\n' + lines.join('\n') +
+                      '\n\n--- erzeugter Bericht ---\n' + rep;
+    window.__testResult = { fail };
+  } catch (e) {
+    out.className = 'fail';
+    out.textContent = 'EXCEPTION: ' + (e && e.stack ? e.stack : e);
+    window.__testResult = { fail: 1 };
+  }
+});
+</script>
+</body>
+</html>

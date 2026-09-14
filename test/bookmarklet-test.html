@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="de" theme="light">
+<head><meta charset="utf-8"><title>Freizimmer – Bookmarklet-Test</title>
+<style>body{font:14px/1.5 system-ui,sans-serif;margin:24px}#out{font-family:ui-monospace,monospace}
+.ok{color:#0a7d3f}.fail{color:#b42318;font-weight:600}</style></head>
+<body>
+<h1>Freizimmer – Bookmarklet-Test</h1>
+<p>Führt den Inhalt von <code>bookmarklet.txt</code> aus, so wie es der Browser beim Klick auf das Lesezeichen tut.</p>
+<div id="app"></div>
+<div id="out">läuft …</div>
+
+<script>
+// Minimale isy-Attrappe (Token-Store + API).
+const pinia = { _s: new Map([['token', { tokenManager: { getToken: () => 'MOCK.' + 'y'.repeat(40) } }]]) };
+document.querySelector('#app').__vue_app__ = { _context: { provides: { pinia } } };
+
+const ROOMS = [
+  { id: '/resources/1', _id: 1, descShort: 'HL1.02', description: 'Unt, 24 Pl', partOf: null, partOfChildren: [] },
+  { id: '/resources/2', _id: 2, descShort: 'HL2.02', description: 'Ch Unt, 28 Pl', partOf: null, partOfChildren: [] },
+];
+const TODAY = new Date();
+const p = (n) => String(n).padStart(2, '0');
+const day = TODAY.getFullYear() + '-' + p(TODAY.getMonth() + 1) + '-' + p(TODAY.getDate());
+const booking = {
+  id: '/messages/1', calculatedTitleShort: 'M sig 4Mc', agendaResourceTitle: 'M sig 4Mc',
+  dtFrom: day + 'T08:45:00+02:00', dtTo: day + 'T09:30:00+02:00',
+  resources: { edges: [{ node: { id: '/mr/1', resource: { id: '/resources/1', descShort: 'HL1.02', partOf: null, partOfChildren: [] } } }] },
+};
+
+window.fetch = async (url, init) => {
+  const q = JSON.parse(init.body).query;
+  const data = q.includes('freizimmerRooms')
+    ? { resources: ROOMS }
+    : { messages: { pageInfo: { hasNextPage: false, endCursor: null }, edges: [{ node: booking }] } };
+  return { ok: true, status: 200, json: async () => ({ data }), text: async () => '' };
+};
+</script>
+
+<script>
+const out = document.getElementById('out');
+
+window.addEventListener('load', async () => {
+  try {
+    // fetch ist hier die Attrappe, deshalb wird die Datei per XHR geladen.
+    const txt = await new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open('GET', '../bookmarklet.txt');
+      x.onload = () => resolve(x.responseText);
+      x.onerror = reject;
+      x.send();
+    });
+
+    if (!txt.startsWith('javascript:')) throw new Error('bookmarklet.txt beginnt nicht mit javascript:');
+    const code = decodeURIComponent(txt.slice('javascript:'.length));
+
+    // Genau das macht der Browser beim Klick auf das Lesezeichen.
+    (0, eval)(code);
+
+    await new Promise((r) => setTimeout(r, 600));
+
+    const host = document.getElementById('freizimmer-root');
+    const lines = [];
+    let fail = 0;
+    const check = (n, c) => { if (c) lines.push('  OK   ' + n); else { fail++; lines.push('  FAIL ' + n); } };
+
+    check('Overlay wurde eingefügt', !!host);
+    const sr = host && host.shadowRoot;
+    check('Overlay öffnet sich automatisch', sr && sr.querySelector('.backdrop').style.display === 'flex');
+    check('Kein Launcher-Button im Bookmarklet-Modus', sr && !sr.querySelector('.launcher'));
+    check('Räume geladen', window.__freizimmer__ && window.__freizimmer__.state.rooms.length === 2);
+    check('Freie Räume gerendert', sr && sr.querySelectorAll('.card').length >= 1);
+    check('Datum ist heute', sr && sr.querySelector('#fz-date').value === day);
+
+    out.className = fail ? 'fail' : 'ok';
+    out.textContent = (fail ? fail + ' FEHLER' : 'BOOKMARKLET OK') + '\n' + lines.join('\n');
+    window.__testResult = { fail, lines };
+  } catch (e) {
+    out.className = 'fail';
+    out.textContent = 'EXCEPTION: ' + (e && e.stack ? e.stack : e);
+  }
+});
+</script>
+</body>
+</html>

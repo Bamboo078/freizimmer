@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="de" theme="light">
+<head>
+  <meta charset="utf-8">
+  <title>Freizimmer – Mock-Test</title>
+  <style>
+    body { font: 14px/1.5 system-ui, sans-serif; margin: 24px; }
+    #out { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; white-space: pre-wrap; }
+    .ok { color: #0a7d3f; }
+    .fail { color: #b42318; font-weight: 600; }
+    h1 { font-size: 18px; }
+  </style>
+</head>
+<body>
+  <h1>Freizimmer – Mock-Test</h1>
+  <p>Testet die Logik gegen eine nachgebaute isy-API (kein echter Login nötig).</p>
+  <div id="app"></div>
+  <div id="out">läuft …</div>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * 1. Mock der isy-Umgebung
+ * ------------------------------------------------------------------ */
+
+// Fake-Vue-App mit Pinia-Token-Store, so wie die echte isy-App ihn haelt.
+const piniaMock = { _s: new Map([['token', { tokenManager: { getToken: () => 'MOCK.TOKEN.' + 'x'.repeat(40) } }]]) };
+document.querySelector('#app').__vue_app__ = { _context: { provides: { pinia: piniaMock } } };
+
+const DAY = '2026-09-16';   // Mittwoch
+const OFF = '+02:00';
+const iso = (t) => DAY + 'T' + t + ':00' + OFF;
+
+// Raeume: HL3.01 / HL3.02 sind Teilraeume des Gesamtraums HL3.0
+const ROOMS = [
+  { id: '/resources/1',  _id: 1,  descShort: 'HL1.02', description: 'Instr Unt',
+    partOf: null, partOfChildren: [] },
+  { id: '/resources/10', _id: 10, descShort: 'HL3.02', description: 'Unt, 26 Pl',
+    partOf: { id: '/resources/99', descShort: 'HL3.0' }, partOfChildren: [] },
+  { id: '/resources/11', _id: 11, descShort: 'HL3.03', description: 'G Vorb/Bespr, 3 Pl',
+    partOf: null, partOfChildren: [] },
+  { id: '/resources/12', _id: 12, descShort: 'HL2.01', description: 'Ch Lab, 18 Pl',
+    partOf: null, partOfChildren: [] },
+  { id: '/resources/99', _id: 99, descShort: 'HL3.0',  description: 'Unt gross, 52 Pl',
+    partOf: null, partOfChildren: [{ id: '/resources/10', descShort: 'HL3.02' }] },
+];
+
+// Lektionen wie im Screenshot
+const SLOTS = [['08:45','09:30'],['09:40','10:25'],['10:35','11:20'],['11:25','12:10'],
+               ['13:05','13:50'],['13:55','14:40'],['14:50','15:35'],['15:45','16:30']];
+
+// Belegungen: HL3.02 ist 08:45-12:10 belegt, danach frei.
+// HL2.01 ist nur 13:55-14:40 belegt. HL1.02 den ganzen Tag frei.
+// HL3.03 wird ueber den Gesamtraum HL3.0 belegt (Teilraum-Logik).
+const BOOKINGS = [
+  { room: '/resources/10', slot: 0, title: 'M hcs 4Me' },
+  { room: '/resources/10', slot: 1, title: 'M swa 3Fb' },
+  { room: '/resources/10', slot: 2, title: 'M hcs 3Mf' },
+  { room: '/resources/10', slot: 3, title: 'M hcs 3Mf' },
+  { room: '/resources/12', slot: 5, title: 'CH Lab 2Fa' },
+  { room: '/resources/99', slot: 6, title: 'Grossanlass' },  // belegt auch HL3.02
+];
+
+function buildOccupiedNodes() {
+  return BOOKINGS.map((b, i) => {
+    const res = ROOMS.find((r) => r.id === b.room);
+    return {
+      id: '/messages/' + i,
+      calculatedTitleShort: b.title,
+      agendaResourceTitle: b.title,
+      dtFrom: iso(SLOTS[b.slot][0]),
+      dtTo: iso(SLOTS[b.slot][1]),
+      resources: { edges: [{ node: { id: '/mr/' + i, resource: {
+        id: res.id, descShort: res.descShort,
+        partOf: res.partOf, partOfChildren: res.partOfChildren,
+      } } }] },
+    };
+  });
+}
+
+const calls = [];
+let failOccupied = false;   // fuer den Fallback-Test
+
+window.fetch = async function (url, init) {
+  const body = JSON.parse(init.body);
+  calls.push({ url, auth: init.headers.authorization, op: body.query.slice(0, 80), vars: body.variables });
+
+  const q = body.query;
+  let data = null;
+
+  if (q.indexOf('freizimmerRooms') !== -1) {
+    data = { resources: ROOMS };
+  } else if (q.indexOf('freizimmerOccupied') !== -1) {
+    if (failOccupied) {
+      return jsonRes({ errors: [{ message: 'Access Denied.' }] });
+    }
+    data = { messages: { pageInfo: { hasNextPage: false, endCursor: null },
+             edges: buildOccupiedNodes().map((n) => ({ node: n })) } };
+  } else if (q.indexOf('freizimmerByRoom') !== -1) {
+    const iri = body.variables.iri;
+    const nodes = BOOKINGS.filter((b) => b.room === iri).map((b, i) => ({
+      id: '/m/' + iri + i, title: b.title, calculatedTitleShort: b.title,
+      dtFrom: iso(SLOTS[b.slot][0]), dtTo: iso(SLOTS[b.slot][1]),
+    }));
+    data = { messages: { pageInfo: { hasNextPage: false, endCursor: null },
+             edges: nodes.map((n) => ({ node: n })) } };
+  }
+  return jsonRes({ data });
+};
+
+function jsonRes(payload) {
+  return { ok: true, status: 200, json: async () => payload, text: async () => JSON.stringify(payload) };
+}
+
+window.__freizimmerAutoOpen = false;
+</script>
+
+<script src="../freizimmer.user.js"></script>
+
+<script>
+/* ------------------------------------------------------------------ *
+ * 2. Tests
+ * ------------------------------------------------------------------ */
+const out = document.getElementById('out');
+let pass = 0, fail = 0;
+const lines = [];
+
+function check(name, cond, extra) {
+  if (cond) { pass++; lines.push('  OK   ' + name); }
+  else { fail++; lines.push('  FAIL ' + name + (extra !== undefined ? '  -> ' + JSON.stringify(extra) : '')); }
+}
+
+async function run() {
+  const fz = window.__freizimmer__;
+  const I = fz._internals;
+
+  // --- Datumsformat ---
+  const d = new Date(2026, 8, 16, 13, 55, 0);
+  const gqlDate = I.toGqlDate(d);
+  check('toGqlDate Format', /^2026-09-16T13:55:00[+-]\d\d:\d\d$/.test(gqlDate), gqlDate);
+
+  // --- Token aus dem Pinia-Store ---
+  check('Token aus App-Store', (I.Token.get() || '').indexOf('MOCK.TOKEN.') === 0, I.Token.get());
+
+  // --- Laden ---
+  await I.loadRooms();
+  check('5 Räume geladen', fz.state.rooms.length === 5, fz.state.rooms.length);
+  await I.loadOccupancy(DAY);
+  check('Strategie A benutzt', fz.state.strategy === 'A', fz.state.strategy);
+  check('Authorization-Header gesetzt',
+        calls.every((c) => (c.auth || '').indexOf('Bearer MOCK.TOKEN.') === 0));
+
+  // --- Lektionsraster automatisch erkannt ---
+  const slots = fz.state.slots.map((s) => [s.from, s.to]);
+  check('Lektionsraster erkannt (>=3 Slots)', fz.state.slots.length >= 3, slots);
+
+  // --- Frei / belegt ---
+  const room = (n) => fz.state.rooms.find((r) => r.name === n);
+  const at = (t) => I.atTime(DAY, t);
+
+  check('HL3.02 um 08:45-09:30 belegt', !I.isFree(room('HL3.02'), at('08:45'), at('09:30')));
+  check('HL3.02 um 13:05-13:50 frei',    I.isFree(room('HL3.02'), at('13:05'), at('13:50')));
+  check('HL1.02 ganzen Tag frei',        I.isFree(room('HL1.02'), at('08:00'), at('17:00')));
+  check('HL2.01 um 13:55-14:40 belegt', !I.isFree(room('HL2.01'), at('13:55'), at('14:40')));
+  check('HL2.01 um 13:05-13:50 frei',    I.isFree(room('HL2.01'), at('13:05'), at('13:50')));
+
+  // Teilraum-Logik: HL3.0 gebucht -> HL3.02 ebenfalls belegt (und umgekehrt)
+  check('Teilraum: HL3.02 belegt, wenn Gesamtraum HL3.0 gebucht ist',
+        !I.isFree(room('HL3.02'), at('14:50'), at('15:35')));
+  check('Teilraum: HL3.0 belegt, wenn HL3.02 gebucht ist',
+        !I.isFree(room('HL3.0'), at('08:45'), at('09:30')));
+  check('Nicht verwandter Raum bleibt frei',
+        I.isFree(room('HL3.03'), at('14:50'), at('15:35')));
+
+  // Randfälle: Zeitfenster grenzt exakt an eine Belegung an
+  check('Fenster endet exakt bei Belegungsbeginn = frei',
+        I.isFree(room('HL2.01'), at('13:10'), at('13:55')));
+  check('Fenster startet exakt bei Belegungsende = frei',
+        I.isFree(room('HL2.01'), at('14:40'), at('15:20')));
+  check('Fenster überlappt Belegung teilweise = belegt',
+        !I.isFree(room('HL2.01'), at('14:30'), at('15:00')));
+
+  // --- "frei bis" ---
+  const fu = I.freeUntil(room('HL2.01'), at('13:05'));
+  check('freeUntil HL2.01 = 13:55', fu && fu.getHours() === 13 && fu.getMinutes() === 55,
+        fu && fu.toString());
+  check('freeUntil HL1.02 = null (nichts gebucht)', I.freeUntil(room('HL1.02'), at('08:00')) === null);
+
+  // --- analyse() ---
+  const res = I.analyse(at('13:05'), at('13:50'), null);
+  check('analyse: 5 freie Räume um 13:05', res.free.length === 5, res.free.map((f) => f.room.name));
+  const res2 = I.analyse(at('08:45'), at('09:30'), null);
+  check('analyse: 08:45 nur 3 frei (HL3.02+HL3.0 belegt)', res2.free.length === 3,
+        res2.free.map((f) => f.room.name));
+  const res3 = I.analyse(at('13:05'), at('13:50'), (r) => /Unt/.test(r.desc));
+  check('analyse: Filter "nur Unterrichtszimmer"', res3.free.length === 3,
+        res3.free.map((f) => f.room.name));
+
+  // --- Fallback auf Strategie B ---
+  failOccupied = true;
+  await I.loadOccupancy(DAY);
+  check('Fallback auf Strategie B', fz.state.strategy === 'B', fz.state.strategy);
+  check('Strategie B: HL3.02 um 08:45 belegt', !I.isFree(room('HL3.02'), at('08:45'), at('09:30')));
+  check('Strategie B: HL3.02 um 13:05 frei',    I.isFree(room('HL3.02'), at('13:05'), at('13:50')));
+  failOccupied = false;
+  await I.loadOccupancy(DAY);
+
+  // --- UI ---
+  fz.open();
+  const shadow = document.getElementById('freizimmer-root').shadowRoot;
+  const backdrop = shadow.querySelector('.backdrop');
+  check('Overlay sichtbar', backdrop.style.display === 'flex');
+  shadow.querySelector('#fz-date').value = DAY;
+  shadow.querySelector('#fz-from').value = '13:05';
+  shadow.querySelector('#fz-to').value = '13:50';
+  await I.UI.run();
+  const cards = shadow.querySelectorAll('.card.free');
+  check('UI zeigt freie Räume als Karten', cards.length === 5, cards.length);
+  check('UI-Status nennt Anzahl',
+        /5<\/strong> von 5/.test(shadow.querySelector('#fz-status').innerHTML),
+        shadow.querySelector('#fz-status').textContent);
+  const chips = shadow.querySelectorAll('#fz-chips .chip');
+  check('Lektions-Chips gerendert', chips.length >= 4, chips.length);
+
+  // Tagesraster
+  I.UI.tab = 'raster';
+  I.UI.render();
+  check('Tagesraster gerendert', shadow.querySelectorAll('table.raster tr').length === 6,
+        shadow.querySelectorAll('table.raster tr').length);
+  I.UI.tab = 'liste';
+  I.UI.render();
+
+  lines.unshift((fail === 0 ? 'ALLE TESTS BESTANDEN' : fail + ' TEST(S) FEHLGESCHLAGEN') +
+                '  (' + pass + ' ok, ' + fail + ' fail)\n');
+  out.className = fail === 0 ? 'ok' : 'fail';
+  out.textContent = lines.join('\n');
+  window.__testResult = { pass, fail, lines };
+}
+
+// Das Script bootet erst bei DOMContentLoaded - danach testen.
+window.addEventListener('load', () => { start(); });
+
+function start() {
+run().catch((e) => {
+  out.className = 'fail';
+  out.textContent = 'EXCEPTION: ' + (e && e.stack ? e.stack : e);
+  window.__testResult = { pass, fail: fail + 1, error: String(e && e.stack || e) };
+});
+}
+</script>
+</body>
+</html>

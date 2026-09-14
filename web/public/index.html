@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2a6df4">
+<meta name="robots" content="noindex, nofollow">
+<title>Freizimmer</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚪</text></svg>">
+</head>
+<body>
+
+<!-- ---------------- Anmeldung ---------------- -->
+<section id="login" hidden>
+  <form id="login-form" class="card">
+    <h1>Freizimmer</h1>
+    <p class="sub">Freie Räume der Kantonsschule Romanshorn</p>
+
+    <label id="code-row" hidden>
+      <span>Zugangscode</span>
+      <input type="text" id="code" autocomplete="off" inputmode="text">
+    </label>
+
+    <label>
+      <span>isy-Benutzername</span>
+      <input type="text" id="loginid" autocomplete="username" autocapitalize="none"
+             autocorrect="off" spellcheck="false" required>
+    </label>
+
+    <label>
+      <span>isy-Passwort</span>
+      <input type="password" id="password" autocomplete="current-password" required>
+    </label>
+
+    <button type="submit" class="btn" id="login-btn">Anmelden</button>
+    <p class="err" id="login-err" hidden></p>
+
+    <p class="fineprint">
+      Die Anmeldung geht direkt an isy. Dein Passwort wird nur für diesen einen
+      Schritt verwendet und <strong>nirgends gespeichert</strong> – danach läuft alles
+      über ein Sitzungs-Token in deinem Browser.
+      Dieses Tool liest nur; es bucht und ändert nichts.
+    </p>
+  </form>
+</section>
+
+<!-- ---------------- App ---------------- -->
+<section id="app" hidden>
+  <header>
+    <div>
+      <h1>Freizimmer</h1>
+      <p class="sub" id="subtitle">Kantonsschule Romanshorn</p>
+    </div>
+    <button class="linkbtn" id="logout">Abmelden</button>
+  </header>
+
+  <div class="controls">
+    <div class="row">
+      <label class="field"><span>Datum</span><input type="date" id="date"></label>
+      <label class="field"><span>Von</span><input type="time" id="from" step="300"></label>
+      <label class="field"><span>Bis</span><input type="time" id="to" step="300"></label>
+      <button class="btn" id="go">Suchen</button>
+      <button class="btn ghost" id="now">Jetzt</button>
+    </div>
+
+    <div class="chips" id="chips"></div>
+
+    <div class="opts">
+      <input type="search" id="search" placeholder="Raum suchen, z. B. HL3">
+      <label class="check"><input type="checkbox" id="only"> nur Unterrichtszimmer</label>
+    </div>
+  </div>
+
+  <nav class="tabs">
+    <button class="tab is-active" data-tab="liste">Freie Räume</button>
+    <button class="tab" data-tab="raster">Tagesraster</button>
+  </nav>
+
+  <main id="body">
+    <p class="status" id="status"></p>
+  </main>
+
+  <footer>
+    „Frei“ heisst „laut isy nicht gebucht“ – das ist keine Reservation.
+  </footer>
+</section>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "freizimmer-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Freie Räume der Kantonsschule Romanshorn finden – Website mit eigenem Backend.",
+  "scripts": {
+    "start": "node server.mjs",
+    "mock": "node test/dev-mock.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

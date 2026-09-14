@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "freizimmer-web-mock",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["web/test/dev-mock.mjs"],
+      "port": 3111
+    },
+    {
+      "name": "freizimmer-test",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["test/serve.mjs"],
+      "port": 5173
+    }
+  ]
+}
