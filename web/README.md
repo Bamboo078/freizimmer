@@ -52,8 +52,33 @@ Sind mehrere Lektionen gewählt, zeigt die Liste nur Räume, die in **allen**
 gewählten Lektionen frei sind. Bei den belegten Räumen steht dazu, in welcher
 der gewählten Lektionen es klemmt.
 
-Gebäudeauswahl, Sortierung und der Haken bleiben gespeichert – allerdings nur in
-dem Browser, in dem du sie eingestellt hast (`localStorage`).
+### Startvorgaben
+
+Frisch geöffnet steht die Seite auf:
+
+| | Vorgabe |
+|---|---|
+| Lektionen | **6. und 7.** |
+| Sortieren | **Stockwerk – oben zuerst** |
+| Gebäude | **HL, HM, HR** |
+| nur Unterrichtszimmer | **an** |
+
+Gebäudeauswahl, Sortierung und der Haken bleiben gespeichert, sobald du sie
+änderst – allerdings nur in dem Browser, in dem du das gemacht hast
+(`localStorage`). Die Lektionen werden bewusst *nicht* gemerkt: bei jedem
+Tageswechsel stehen wieder die Vorgabe-Lektionen da. *Jetzt* wählt stattdessen
+die Lektion, die gerade läuft, und *Neu laden* (↻) behält deine Auswahl.
+
+Ändern lässt sich das oben in [`public/app.js`](public/app.js):
+
+```js
+const DEFAULT_BUILDINGS = ['HL', 'HM', 'HR'];
+const DEFAULT_LESSONS = [6, 7];
+const DEFAULT_SORT = 'floor-desc';
+```
+
+Der Haken *nur Unterrichtszimmer* steckt als `checked` im `<input id="only">`
+in [`public/index.html`](public/index.html).
 
 Am Handy sind die Lektionsknöpfe eine Zeile zum Wischen, und alles unter
 *Eigene Zeit, Gebäude & Filter* ist eingeklappt, bis man es braucht.

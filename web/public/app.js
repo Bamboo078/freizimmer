@@ -8,8 +8,22 @@ import {
 
 const $ = (sel) => document.querySelector(sel);
 
+/* ------------------------------------------------------------------ *
+ * Startvorgaben
+ *
+ * So sieht die Seite aus, wenn man sie frisch öffnet. Wer etwas umstellt,
+ * dessen Einstellung wird gemerkt (ausser den Lektionen – die werden bei
+ * jedem Tageswechsel wieder auf die Vorgabe gesetzt).
+ * ------------------------------------------------------------------ */
+
 /** Gebäude, die beim ersten Start angehakt sind. */
 const DEFAULT_BUILDINGS = ['HL', 'HM', 'HR'];
+
+/** Lektionen, die beim Laden eines Tages vorgewählt sind – wie auf den Chips. */
+const DEFAULT_LESSONS = [6, 7];
+
+/** Sortierung beim ersten Start. */
+const DEFAULT_SORT = 'floor-desc';
 
 /** Wie oft die Meldungen der anderen nachgeladen werden (ms). */
 const POLL_MS = 45000;
@@ -24,7 +38,7 @@ const state = {
   loading: false,
   selected: new Set(),     // Indizes der gewählten Lektionen (mehrere möglich)
   buildings: null,         // Set<string> – null heisst "noch nicht gesetzt"
-  sort: 'name-asc',
+  sort: DEFAULT_SORT,
 
   // Geteilte Meldungen
   reports: [],
@@ -140,6 +154,7 @@ $('#logout').addEventListener('click', async () => {
 async function load() {
   const day = $('#date').value;
   if (!day || state.loading) return;
+  const sameDay = state.day === day;      // "Neu laden" soll die Auswahl behalten
   state.loading = true;
   setStatus('<span class="spinner"></span>Lade Räume und Belegungen …');
   clearBody();
@@ -162,7 +177,13 @@ async function load() {
   state.busy = buildBusy(state.rooms, data.appointments || []);
   state.slots = deriveSlots(state.busy);
   state.warning = data.warning || null;
-  state.selected = new Set();
+
+  if (sameDay) {
+    // Lektionen, die es nach dem Neuladen nicht mehr gibt, fallen weg.
+    state.selected = new Set(Array.from(state.selected).filter((i) => i < state.slots.length));
+  } else {
+    selectDefaultLessons();
+  }
 
   renderChips();
   renderBuildings();
@@ -887,6 +908,15 @@ function setNow() {
   state.selected = new Set();
 }
 
+/** Die Vorgabe-Lektionen wählen, soweit es sie an diesem Tag gibt. */
+function selectDefaultLessons() {
+  const idx = DEFAULT_LESSONS
+    .map((n) => n - 1)
+    .filter((i) => i >= 0 && i < state.slots.length);
+  state.selected = new Set(idx);
+  syncTimesFromSelection();
+}
+
 /** "Jetzt" wählt zusätzlich die Lektion, in der wir gerade stecken. */
 function selectCurrentSlot() {
   const now = new Date();
@@ -970,10 +1000,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && st
   if (data.loggedIn) {
     showApp();
     setNow();
-    await load();
-    selectCurrentSlot();
-    updateChips();
-    render();
+    await load();          // wählt die Vorgabe-Lektionen gleich mit
   } else {
     showLogin(Boolean(data.codeRequired));
   }
