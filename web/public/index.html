@@ -57,34 +57,49 @@
   </header>
 
   <div class="controls">
-    <div class="row">
+    <div class="row daterow">
       <label class="field"><span>Datum</span><input type="date" id="date"></label>
-      <label class="field"><span>Von</span><input type="time" id="from" step="300"></label>
-      <label class="field"><span>Bis</span><input type="time" id="to" step="300"></label>
-      <button class="btn" id="go">Suchen</button>
-      <button class="btn ghost" id="now">Jetzt</button>
+      <button class="btn ghost" id="now" type="button">Jetzt</button>
+      <button class="btn ghost icon" id="reload" type="button" title="Neu laden" aria-label="Neu laden">↻</button>
     </div>
 
-    <div class="chips" id="chips"></div>
-
-    <div class="buildings">
-      <span class="lbl">Gebäude:</span>
-      <div class="chips" id="buildings"></div>
+    <div class="slotbar">
+      <div class="slotbar-head">
+        <span class="lbl">Lektionen – mehrere möglich</span>
+        <button class="linkbtn tiny" id="slot-clear" type="button" hidden>zurücksetzen</button>
+      </div>
+      <div class="chips scrollchips" id="chips"></div>
+      <p class="slot-note" id="slot-note" hidden></p>
     </div>
 
-    <div class="opts">
-      <input type="search" id="search" placeholder="Raum suchen, z. B. HL3">
-      <label class="sortbox">
-        <span class="lbl">Sortieren</span>
-        <select id="sort"></select>
-      </label>
-      <label class="check"><input type="checkbox" id="only"> nur Unterrichtszimmer</label>
-    </div>
+    <details class="more" id="more">
+      <summary><span>Eigene Zeit, Gebäude &amp; Filter</span><span class="more-mark" id="more-mark"></span></summary>
+      <div class="more-body">
+        <div class="row">
+          <label class="field"><span>Von</span><input type="time" id="from" step="300"></label>
+          <label class="field"><span>Bis</span><input type="time" id="to" step="300"></label>
+        </div>
+
+        <div class="buildings">
+          <span class="lbl">Gebäude</span>
+          <div class="chips" id="buildings"></div>
+        </div>
+
+        <div class="opts">
+          <input type="search" id="search" placeholder="Raum suchen, z. B. HL3">
+          <label class="sortbox">
+            <span class="lbl">Sortieren</span>
+            <select id="sort"></select>
+          </label>
+          <label class="check"><input type="checkbox" id="only"> nur Unterrichtszimmer</label>
+        </div>
+      </div>
+    </details>
   </div>
 
   <nav class="tabs">
-    <button class="tab is-active" data-tab="liste">Freie Räume</button>
-    <button class="tab" data-tab="raster">Tagesraster</button>
+    <button class="tab is-active" data-tab="liste" type="button">Freie Räume</button>
+    <button class="tab" data-tab="raster" type="button">Tagesraster</button>
   </nav>
 
   <main id="body">
@@ -93,8 +108,24 @@
 
   <footer>
     „Frei“ heisst „laut isy nicht gebucht“ – das ist keine Reservation.
+    Meldungen wie „abgeschlossen“ kommen von Mitschülerinnen und Mitschülern.
   </footer>
 </section>
+
+<!-- ---------------- Aktionsblatt für einen Raum ---------------- -->
+<div class="sheet-backdrop" id="sheet" hidden>
+  <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet-grab"></div>
+    <div class="sheet-head">
+      <div>
+        <h2 id="sheet-title">Raum</h2>
+        <p class="sub" id="sheet-sub"></p>
+      </div>
+      <button class="linkbtn" id="sheet-close" type="button">Schliessen</button>
+    </div>
+    <div id="sheet-body"></div>
+  </div>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>

@@ -198,3 +198,33 @@ export function sendJson(res, status, payload) {
   res.setHeader('cache-control', 'no-store');
   res.status(status).send(JSON.stringify(payload));
 }
+
+/* ------------------------------------------------------------------ *
+ * Wer meldet? – aus dem isy-Token gelesen
+ * ------------------------------------------------------------------ */
+
+function decodeJwt(token) {
+  try {
+    const part = String(token).split('.')[1];
+    if (!part) return null;
+    const json = Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8');
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Kennung des angemeldeten Benutzers – nur damit jede Person höchstens
+ * eine Meldung pro Raum und Lektion hat und ihre eigene zurücknehmen kann.
+ * Es wird kein Passwort und kein Token gespeichert.
+ */
+export function identityOf(req) {
+  const jar = getCookies(req);
+  const claims = decodeJwt(jar[COOKIE_TOKEN]) || {};
+  const name =
+    claims.username || claims.loginid || claims.preferred_username ||
+    (claims.sub != null ? String(claims.sub) : '');
+  if (!name) return { id: 'anonym', name: 'jemand' };
+  return { id: String(name).toLowerCase(), name: String(name) };
+}

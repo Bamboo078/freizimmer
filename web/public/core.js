@@ -172,16 +172,65 @@ export function blockingEntries(busy, room, from, to) {
   return busyOf(busy, room).filter((b) => b.start < to && b.end > from);
 }
 
+/* ------------------------------------------------------------------ *
+ * Mehrere Zeitfenster gleichzeitig
+ *
+ * Ein Fenster ist { from: Date, to: Date, key?: string, label?: string }.
+ * Gesucht sind Räume, die in *allen* gewählten Fenstern frei sind. Die
+ * Fenster müssen nicht aneinandergrenzen – 2. und 5. Lektion geht genauso.
+ * ------------------------------------------------------------------ */
+
+/** Frei in jedem einzelnen Fenster. */
+export function isFreeInAll(busy, room, windows) {
+  return windows.every((w) => isFree(busy, room, w.from, w.to));
+}
+
+/** Alle blockierenden Termine über alle Fenster, ohne Doppelte. */
+export function blockingInAll(busy, room, windows) {
+  const seen = new Set();
+  const out = [];
+  windows.forEach((w) => {
+    blockingEntries(busy, room, w.from, w.to).forEach((b) => {
+      const id = b.start.getTime() + '-' + b.end.getTime() + '-' + b.title;
+      if (seen.has(id)) return;
+      seen.add(id);
+      out.push(b);
+    });
+  });
+  return out.sort((a, b) => a.start - b.start);
+}
+
+/** In welchen der gewählten Fenster ist der Raum belegt? (Index-Liste) */
+export function blockedWindows(busy, room, windows) {
+  const out = [];
+  windows.forEach((w, i) => {
+    if (!isFree(busy, room, w.from, w.to)) out.push(i);
+  });
+  return out;
+}
+
+export const windowStart = (windows) =>
+  windows.reduce((min, w) => (min === null || w.from < min ? w.from : min), null);
+
+export const windowEnd = (windows) =>
+  windows.reduce((max, w) => (max === null || w.to > max ? w.to : max), null);
+
 /** Teilt die Räume in frei und belegt und sortiert nach `sortMode`. */
-export function analyse(busy, rooms, from, to, filterFn, sortMode) {
+export function analyse(busy, rooms, windows, filterFn, sortMode) {
   const free = [];
   const taken = [];
+  const last = windowEnd(windows);
+
   rooms.forEach((room) => {
     if (filterFn && !filterFn(room)) return;
-    if (isFree(busy, room, from, to)) {
-      free.push({ room, until: freeUntil(busy, room, to) });
+    if (isFreeInAll(busy, room, windows)) {
+      free.push({ room, until: freeUntil(busy, room, last) });
     } else {
-      taken.push({ room, blocks: blockingEntries(busy, room, from, to) });
+      taken.push({
+        room,
+        blocks: blockingInAll(busy, room, windows),
+        blockedIn: blockedWindows(busy, room, windows),
+      });
     }
   });
 
@@ -203,4 +252,135 @@ export function analyse(busy, rooms, from, to, filterFn, sortMode) {
   taken.sort((a, b) => takenCmp(a.room, b.room));
 
   return { free, taken };
+}
+
+/* ------------------------------------------------------------------ *
+ * Geteilte Meldungen: "abgeschlossen", "besetzt", "wir sind drin", "frei"
+ * ------------------------------------------------------------------ */
+
+export const STATE_LABEL = {
+  frei: 'war frei',
+  drin: 'wir sind drin',
+  besetzt: 'besetzt',
+  zu: 'abgeschlossen',
+};
+
+export const STATE_SHORT = {
+  frei: 'frei gemeldet',
+  drin: 'wir sind drin',
+  besetzt: 'besetzt',
+  zu: 'abgeschlossen',
+};
+
+export const STATE_ICON = { frei: '✓', drin: '●', besetzt: '✕', zu: '🔒' };
+
+/** Schlüssel einer Lektion, so wie ihn der Server erwartet. */
+export const slotKey = (slot) => minutesToStr(slot.from) + '-' + minutesToStr(slot.to);
+
+/**
+ * Meldungen nach Raum und Lektion einsortieren.
+ * Rückgabe: Map<roomId, Map<slotKey, {state, name, at, mine, count}>>
+ * Bei mehreren Meldungen zur selben Lektion gewinnt die neueste.
+ */
+export function indexReports(reports) {
+  const byRoom = new Map();
+  (reports || []).forEach((r) => {
+    let slots = byRoom.get(r.room);
+    if (!slots) { slots = new Map(); byRoom.set(r.room, slots); }
+    const cur = slots.get(r.slot);
+    if (!cur) {
+      slots.set(r.slot, { ...r, count: 1 });
+    } else if (r.at > cur.at) {
+      slots.set(r.slot, { ...r, count: cur.count + 1, mine: r.mine || cur.mine });
+    } else {
+      cur.count += 1;
+      cur.mine = cur.mine || r.mine;
+    }
+  });
+  return byRoom;
+}
+
+/**
+ * Was ist für diesen Raum in den gewählten Fenstern gemeldet?
+ * "abgeschlossen" schlägt "besetzt" schlägt "drin" schlägt "frei".
+ */
+const RANK = { zu: 4, besetzt: 3, drin: 2, frei: 1 };
+
+export function reportFor(index, room, windows) {
+  const slots = index.get(room.id);
+  if (!slots) return null;
+  const keys = ['tag', ...windows.map((w) => w.key).filter(Boolean)];
+  let best = null;
+  keys.forEach((k) => {
+    const r = slots.get(k);
+    if (!r) return;
+    if (!best || RANK[r.state] > RANK[best.state]) best = r;
+  });
+  return best;
+}
+
+/** Eigene Meldung für genau dieses Fenster (für "zurücknehmen"). */
+export function myReportFor(index, room, key) {
+  const slots = index.get(room.id);
+  const r = slots && slots.get(key);
+  return r && r.mine ? r : null;
+}
+
+/* ------------------------------------------------------------------ *
+ * Erfahrungswerte
+ * ------------------------------------------------------------------ */
+
+/**
+ * Wahrscheinlichkeiten aus den gesammelten Meldungen.
+ * `stats` ist { "<raum>|<lektionsbeginn>": {frei, drin, besetzt, zu, total} }
+ * und enthält nur den Wochentag, um den es gerade geht.
+ *
+ * Gerechnet wird mit Laplace-Glättung (+1 je Gruppe). Damit behauptet eine
+ * einzelne Meldung nicht gleich "100 %", und Räume ohne Meldungen liefern
+ * ehrlicherweise gar nichts.
+ */
+export function chancesFor(stats, room, windows) {
+  const totals = { frei: 0, drin: 0, besetzt: 0, zu: 0, total: 0 };
+  const buckets = new Set(['tag']);
+  windows.forEach((w) => { if (w.key) buckets.add(w.key.split('-')[0]); });
+
+  buckets.forEach((bucket) => {
+    const e = stats && stats[room.id + '|' + bucket];
+    if (!e) return;
+    totals.frei += e.frei || 0;
+    totals.drin += e.drin || 0;
+    totals.besetzt += e.besetzt || 0;
+    totals.zu += e.zu || 0;
+    totals.total += e.total || 0;
+  });
+
+  if (!totals.total) return null;
+
+  const smoothed = totals.total + 3;           // drei Gruppen: nutzbar / besetzt / zu
+  return {
+    n: totals.total,
+    usable: (totals.frei + totals.drin + 1) / smoothed,
+    occupied: (totals.besetzt + 1) / smoothed,
+    closed: (totals.zu + 1) / smoothed,
+    counts: totals,
+  };
+}
+
+export const percent = (x) => Math.round(x * 100) + ' %';
+
+/** Kurzer Text für die Raumkarte. */
+export function chanceLabel(chance) {
+  if (!chance) return null;
+  if (chance.closed >= 0.4) return 'oft abgeschlossen · ' + percent(chance.closed);
+  if (chance.occupied >= 0.4) return 'oft besetzt · ' + percent(chance.occupied);
+  if (chance.n >= 3 && chance.usable >= 0.7) return 'meist nutzbar · ' + percent(chance.usable);
+  return percent(chance.usable) + ' nutzbar (' + chance.n + ')';
+}
+
+/** Welche Farbe die Erfahrung bekommt: gut / mittel / schlecht. */
+export function chanceTone(chance) {
+  if (!chance) return '';
+  if (chance.closed >= 0.4 || chance.occupied >= 0.4) return 'bad';
+  if (chance.n >= 3 && chance.usable >= 0.7) return 'good';
+  return 'mid';
 }

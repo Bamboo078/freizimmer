@@ -15,7 +15,10 @@ Die Daten kommen live aus isy, mit deinem normalen Schul-Login.
 | **[Website](web/README.md)** (Ordner `web`) | eigene URL, z. B. auf Vercel | einmal veröffentlichen; danach nur die URL – auch am Handy |
 | **Bookmarklet / Userscript** (diese Anleitung) | direkt auf der isy-Seite | nichts installieren, aber ein offener isy-Tab |
 
-Die Website ist bequemer, das Bookmarklet ist harmloser. Alles Weitere hier
+Die Website kann mehr: fürs Handy gebaut, mehrere Lektionen auf einmal, und
+geteilte Meldungen („Zimmer abgeschlossen“, „wir sind drin“) samt
+Erfahrungswerten, wie wahrscheinlich ein Raum wirklich nutzbar ist.
+Das Bookmarklet ist dafür harmloser – es fragt nie nach einem Passwort. Alles Weitere hier
 betrifft das Bookmarklet – die Website hat ihre eigene Anleitung in
 [`web/README.md`](web/README.md).
 

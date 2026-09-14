@@ -2,12 +2,17 @@ import {
   buildBusy, deriveSlots, analyse, isFree, blockingEntries,
   parseDay, atTime, toDayStr, toTimeStr, minutesToStr, pad, WEEKDAYS,
   buildingOf, buildingsOf, sortRooms, SORT_MODES,
+  slotKey, indexReports, reportFor, chancesFor, chanceLabel, chanceTone,
+  STATE_LABEL, STATE_SHORT, STATE_ICON, percent,
 } from './core.js';
 
 const $ = (sel) => document.querySelector(sel);
 
 /** Gebäude, die beim ersten Start angehakt sind. */
 const DEFAULT_BUILDINGS = ['HL', 'HM', 'HR'];
+
+/** Wie oft die Meldungen der anderen nachgeladen werden (ms). */
+const POLL_MS = 45000;
 
 const state = {
   day: null,
@@ -16,10 +21,19 @@ const state = {
   slots: [],
   warning: null,
   tab: 'liste',
-  activeChip: null,
   loading: false,
-  buildings: null,        // Set<string> – null heisst "noch nicht gesetzt"
+  selected: new Set(),     // Indizes der gewählten Lektionen (mehrere möglich)
+  buildings: null,         // Set<string> – null heisst "noch nicht gesetzt"
   sort: 'name-asc',
+
+  // Geteilte Meldungen
+  reports: [],
+  index: new Map(),
+  stats: {},
+  persistent: true,
+  me: null,
+  sheetRoom: null,
+  sheetScope: null,        // 'lektionen' | 'tag'
 };
 
 /* ------------------------------------------------------------------ *
@@ -29,8 +43,7 @@ const state = {
 function loadPrefs() {
   try {
     const raw = localStorage.getItem('freizimmer.prefs');
-    if (!raw) return null;
-    return JSON.parse(raw);
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
@@ -149,10 +162,102 @@ async function load() {
   state.busy = buildBusy(state.rooms, data.appointments || []);
   state.slots = deriveSlots(state.busy);
   state.warning = data.warning || null;
+  state.selected = new Set();
 
   renderChips();
   renderBuildings();
   render();
+  loadStatus();
+}
+
+/** Meldungen der anderen holen – stört die Darstellung nicht, wenn es klemmt. */
+async function loadStatus(silent) {
+  const day = $('#date').value;
+  if (!day) return;
+  const { ok, status, data } = await api('/api/status?day=' + day);
+  if (status === 401) { showLogin(false); return; }
+  if (!ok) {
+    if (!silent) console.warn('[Freizimmer] Meldungen nicht verfügbar:', data.error);
+    return;
+  }
+  state.reports = data.reports || [];
+  state.index = indexReports(state.reports);
+  state.stats = data.stats || {};
+  state.persistent = data.persistent !== false;
+  state.me = data.me || null;
+  render();
+  if (state.sheetRoom) renderSheet();
+}
+
+/** Eine eigene Meldung abschicken. */
+async function sendReport(room, slots, reportState) {
+  let last = null;
+  for (const slot of slots) {
+    const { ok, data } = await api('/api/status', {
+      method: 'POST',
+      body: JSON.stringify({
+        day: $('#date').value, room: room.id, slot, state: reportState,
+      }),
+    });
+    if (!ok) throw new Error(data.error || 'Melden fehlgeschlagen.');
+    last = data;
+  }
+  if (last) {
+    state.reports = last.reports || [];
+    state.index = indexReports(state.reports);
+    state.stats = last.stats || {};
+    state.persistent = last.persistent !== false;
+    state.me = last.me || state.me;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Zeitfenster
+ * ------------------------------------------------------------------ */
+
+/** Passt das Fenster genau auf eine Lektion? Dann deren Schlüssel benutzen. */
+function keyForTimes(fromStr, toStr) {
+  const hit = state.slots.find(
+    (s) => minutesToStr(s.from) === fromStr && minutesToStr(s.to) === toStr
+  );
+  return hit ? slotKey(hit) : null;
+}
+
+/** Die aktuell gesuchten Fenster – eine Lektion, mehrere, oder eine freie Zeit. */
+function windows() {
+  const day = $('#date').value;
+
+  if (state.selected.size) {
+    return Array.from(state.selected).sort((a, b) => a - b).map((i) => {
+      const s = state.slots[i];
+      return {
+        index: i,
+        key: slotKey(s),
+        label: (i + 1) + '. ' + minutesToStr(s.from) + '–' + minutesToStr(s.to),
+        short: (i + 1) + '.',
+        from: atTime(day, minutesToStr(s.from)),
+        to: atTime(day, minutesToStr(s.to)),
+      };
+    });
+  }
+
+  const f = $('#from').value || '08:00';
+  const t = $('#to').value || '09:00';
+  return [{
+    index: null,
+    key: keyForTimes(f, t),
+    label: f + '–' + t,
+    short: f,
+    from: atTime(day, f),
+    to: atTime(day, t),
+  }];
+}
+
+/** Auf welche Lektionsschlüssel sich eine Meldung beziehen soll. */
+function reportSlots(scope) {
+  if (scope === 'tag') return ['tag'];
+  const keys = windows().map((w) => w.key).filter(Boolean);
+  return keys.length ? keys : ['tag'];
 }
 
 /* ------------------------------------------------------------------ *
@@ -177,53 +282,121 @@ function renderError(message, detail) {
     const s = document.createElement('summary');
     s.textContent = 'Technische Details';
     const pre = document.createElement('pre');
-    pre.style.cssText = 'font-size:11px;white-space:pre-wrap;overflow:auto;max-height:200px';
+    pre.className = 'detailpre';
     pre.textContent = typeof detail === 'string' ? detail : JSON.stringify(detail, null, 2);
     d.append(s, pre);
     $('#body').append(d);
   }
 }
 
+/* ---- Lektions-Chips: mehrere wählbar ---- */
+
 function renderChips() {
   const box = $('#chips');
   box.textContent = '';
-  if (!state.slots.length) return;
 
-  const lbl = document.createElement('span');
-  lbl.className = 'lbl';
-  lbl.textContent = 'Lektion:';
-  box.append(lbl);
+  if (!state.slots.length) {
+    const p = document.createElement('span');
+    p.className = 'lbl';
+    p.textContent = 'Für diesen Tag kennt isy keine Lektionen – bitte Zeit von Hand eingeben.';
+    box.append(p);
+    updateSlotNote();
+    return;
+  }
 
   state.slots.forEach((slot, i) => {
     const b = document.createElement('button');
-    b.className = 'chip';
     b.type = 'button';
-    b.textContent = (i + 1) + '. ' + minutesToStr(slot.from) + '–' + minutesToStr(slot.to);
+    b.className = 'chip slotchip';
+    b.dataset.slot = String(i);
+    b.setAttribute('aria-label',
+      (i + 1) + '. Lektion, ' + minutesToStr(slot.from) + ' bis ' + minutesToStr(slot.to));
+
+    const num = document.createElement('strong');
+    num.textContent = (i + 1) + '.';
+    const time = document.createElement('span');
+    time.className = 'chiptime';
+    time.textContent = minutesToStr(slot.from) + '–' + minutesToStr(slot.to);
+    b.append(num, time);
+
     b.addEventListener('click', () => {
-      $('#from').value = minutesToStr(slot.from);
-      $('#to').value = minutesToStr(slot.to);
-      state.activeChip = i;
+      if (state.selected.has(i)) state.selected.delete(i);
+      else state.selected.add(i);
+      syncTimesFromSelection();
+      updateChips();
       render();
     });
     box.append(b);
   });
 
   const all = document.createElement('button');
-  all.className = 'chip';
   all.type = 'button';
-  all.textContent = 'ganzer Tag';
+  all.className = 'chip chip-all';
+  all.dataset.slot = 'all';
   all.addEventListener('click', () => {
-    const first = state.slots[0];
-    const last = state.slots[state.slots.length - 1];
-    $('#from').value = minutesToStr(first.from);
-    $('#to').value = minutesToStr(last.to);
-    state.activeChip = 'all';
+    state.selected = state.selected.size === state.slots.length
+      ? new Set()
+      : new Set(state.slots.map((_, i) => i));
+    syncTimesFromSelection();
+    updateChips();
     render();
   });
   box.append(all);
+
+  updateChips();
 }
 
-/** Gebäude-Knöpfe aus den geladenen Räumen aufbauen. */
+/** Nur den An/Aus-Zustand der Chips nachziehen – ohne sie neu zu bauen. */
+function updateChips() {
+  const allOn = state.slots.length > 0 && state.selected.size === state.slots.length;
+  $('#chips').querySelectorAll('.chip').forEach((c) => {
+    if (c.dataset.slot === 'all') {
+      c.classList.toggle('is-active', allOn);
+      c.textContent = allOn ? 'keine' : 'ganzer Tag';
+      return;
+    }
+    const on = state.selected.has(Number(c.dataset.slot));
+    c.classList.toggle('is-active', on);
+    c.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  updateSlotNote();
+}
+
+function updateSlotNote() {
+  const note = $('#slot-note');
+  const clear = $('#slot-clear');
+  const n = state.selected.size;
+
+  clear.hidden = n === 0;
+
+  if (!n) {
+    note.hidden = false;
+    note.textContent = 'Keine Lektion gewählt – es gilt die Zeit von/bis weiter unten.';
+    return;
+  }
+  const list = Array.from(state.selected).sort((a, b) => a - b).map((i) => (i + 1) + '.').join(' ');
+  note.hidden = false;
+  note.textContent = n === 1
+    ? 'Gewählt: ' + list + ' Lektion'
+    : 'Gewählt: ' + list + ' Lektion – gesucht sind Räume, die in allen frei sind.';
+}
+
+/** Von/Bis auf die Spanne der Auswahl setzen, damit die Felder stimmig bleiben. */
+function syncTimesFromSelection() {
+  if (!state.selected.size) return;
+  const idx = Array.from(state.selected).sort((a, b) => a - b);
+  $('#from').value = minutesToStr(state.slots[idx[0]].from);
+  $('#to').value = minutesToStr(state.slots[idx[idx.length - 1]].to);
+}
+
+$('#slot-clear').addEventListener('click', () => {
+  state.selected = new Set();
+  updateChips();
+  render();
+});
+
+/* ---- Gebäude ---- */
+
 function renderBuildings() {
   const list = buildingsOf(state.rooms);
   const known = new Set(list.map((b) => b.key));
@@ -233,7 +406,6 @@ function renderBuildings() {
     const wanted = DEFAULT_BUILDINGS.filter((b) => known.has(b));
     state.buildings = new Set(wanted.length ? wanted : known);
   } else {
-    // Gebäude, die es nicht mehr gibt, aus der Auswahl werfen.
     state.buildings = new Set(Array.from(state.buildings).filter((b) => known.has(b)));
     if (!state.buildings.size) state.buildings = new Set(known);
   }
@@ -287,14 +459,21 @@ function filterFn() {
   };
 }
 
-function render() {
-  const chips = $('#chips').querySelectorAll('.chip');
-  chips.forEach((c, i) => {
-    const key = i === chips.length - 1 ? 'all' : i;
-    c.classList.toggle('is-active', state.activeChip === key);
-  });
+/** Zusammenfassung der aktiven Filter neben dem Aufklapper. */
+function updateMoreMark() {
+  const bits = [];
+  if ($('#search').value.trim()) bits.push('Suche');
+  if ($('#only').checked) bits.push('nur Unterricht');
+  if (state.buildings && state.buildings.size) bits.push(Array.from(state.buildings).join('/'));
+  $('#more-mark').textContent = bits.join(' · ');
+}
 
+/* ---- Haupt-Render ---- */
+
+function render() {
   clearBody();
+  updateMoreMark();
+
   if (!state.rooms.length) { setStatus('Keine Raumdaten geladen.'); return; }
 
   const day = $('#date').value;
@@ -308,54 +487,116 @@ function render() {
     n.textContent = state.warning;
     $('#body').append(n);
   }
+  if (!state.persistent) {
+    const n = document.createElement('p');
+    n.className = 'note';
+    n.textContent =
+      'Meldungen werden gerade nur im Arbeitsspeicher gehalten und nicht mit anderen geteilt '
+      + '– dafür muss auf dem Server ein Speicher eingerichtet sein (siehe README).';
+    $('#body').append(n);
+  }
 
   if (state.tab === 'raster') renderRaster(day);
   else renderList(day);
 }
 
-function roomCard(room, metaText, cls) {
-  const card = document.createElement('div');
+/* ---- Raumkarte ---- */
+
+function roomCard(room, metaText, cls, wins) {
+  const card = document.createElement('button');
+  card.type = 'button';
   card.className = 'room-card ' + cls;
-  const name = document.createElement('div');
+
+  const report = reportFor(state.index, room, wins);
+  if (report) card.classList.add('r-' + report.state);
+
+  const top = document.createElement('div');
+  top.className = 'card-top';
+
+  const name = document.createElement('span');
   name.className = 'name';
   name.textContent = room.name;
+  top.append(name);
+
+  if (report) {
+    const badge = document.createElement('span');
+    badge.className = 'badge b-' + report.state;
+    badge.textContent = STATE_ICON[report.state] + ' ' + STATE_SHORT[report.state];
+    top.append(badge);
+  }
+  card.append(top);
+
   const desc = document.createElement('div');
   desc.className = 'desc';
   desc.textContent = room.desc;
+  card.append(desc);
+
   const meta = document.createElement('div');
   meta.className = 'meta';
   meta.textContent = metaText;
-  card.append(name, desc, meta);
+  card.append(meta);
+
+  const chance = chancesFor(state.stats, room, wins);
+  if (chance) {
+    const c = document.createElement('div');
+    c.className = 'chance t-' + chanceTone(chance);
+    c.textContent = chanceLabel(chance);
+    card.append(c);
+  }
+
+  card.addEventListener('click', () => openSheet(room));
   return card;
 }
 
+/** Gemeldet "zu"/"besetzt" nach hinten sortieren – frei bleibt frei. */
+function demoteReported(list, wins) {
+  const rank = (item) => {
+    const r = reportFor(state.index, item.room, wins);
+    if (!r) return 1;
+    if (r.state === 'zu') return 3;
+    if (r.state === 'besetzt' || r.state === 'drin') return 2;
+    return 0;                       // ausdrücklich als frei gemeldet: nach vorne
+  };
+  return list.map((item, i) => ({ item, i, r: rank(item) }))
+    .sort((a, b) => (a.r - b.r) || (a.i - b.i))
+    .map((x) => x.item);
+}
+
 function renderList(day) {
-  const from = atTime(day, $('#from').value || '08:00');
-  const to = atTime(day, $('#to').value || '09:00');
-  if (!(to > from)) {
+  const wins = windows();
+  if (wins.some((w) => !(w.to > w.from))) {
     setStatus('Die Endzeit muss nach der Startzeit liegen.');
     return;
   }
 
-  const { free, taken } = analyse(state.busy, state.rooms, from, to, filterFn(), state.sort);
+  const { free, taken } = analyse(state.busy, state.rooms, wins, filterFn(), state.sort);
+  const ordered = demoteReported(free, wins);
+
+  const when = state.selected.size
+    ? wins.map((w) => w.short).join(' ') + ' Lektion'
+    : toTimeStr(wins[0].from) + '–' + toTimeStr(wins[0].to);
+
   setStatus(
-    '<strong>' + free.length + '</strong> von ' + (free.length + taken.length) +
-    ' Räumen frei · ' + toTimeStr(from) + '–' + toTimeStr(to)
+    '<strong>' + free.length + '</strong> von ' + (free.length + taken.length)
+    + ' Räumen frei · ' + when
   );
 
   if (!free.length) {
     const e = document.createElement('p');
     e.className = 'empty';
-    e.textContent = 'In diesem Zeitfenster ist kein Raum frei.';
+    e.textContent = state.selected.size > 1
+      ? 'Kein Raum ist in allen gewählten Lektionen frei.'
+      : 'In diesem Zeitfenster ist kein Raum frei.';
     $('#body').append(e);
   } else {
     const grid = document.createElement('div');
     grid.className = 'grid';
-    free.forEach((item) => {
+    ordered.forEach((item) => {
       grid.append(roomCard(
         item.room,
         item.until ? 'frei bis ' + toTimeStr(item.until) : 'danach nichts gebucht',
-        'is-free'
+        'is-free',
+        wins
       ));
     });
     $('#body').append(grid);
@@ -370,11 +611,11 @@ function renderList(day) {
     grid.className = 'grid';
     taken.forEach((item) => {
       const b = item.blocks[0];
-      grid.append(roomCard(
-        item.room,
-        b ? b.title + ' (' + toTimeStr(b.start) + '–' + toTimeStr(b.end) + ')' : 'belegt',
-        'is-busy'
-      ));
+      let meta = b ? b.title + ' (' + toTimeStr(b.start) + '–' + toTimeStr(b.end) + ')' : 'belegt';
+      if (state.selected.size > 1 && item.blockedIn.length < wins.length) {
+        meta = 'belegt in ' + item.blockedIn.map((i) => wins[i].short).join(' ') + ' · ' + meta;
+      }
+      grid.append(roomCard(item.room, meta, 'is-busy', wins));
     });
     det.append(sum, grid);
     $('#body').append(det);
@@ -387,7 +628,7 @@ function renderRaster(day) {
     return;
   }
   const rooms = sortRooms(state.rooms.filter(filterFn()), state.sort);
-  setStatus(rooms.length + ' Räume · grün = frei');
+  setStatus(rooms.length + ' Räume · grün = frei · tippen zum Melden');
 
   const table = document.createElement('table');
   table.className = 'raster';
@@ -399,6 +640,7 @@ function renderRaster(day) {
   head.append(corner);
   state.slots.forEach((s, i) => {
     const th = document.createElement('th');
+    th.className = state.selected.has(i) ? 'is-sel' : '';
     th.textContent = (i + 1) + '.';
     th.append(document.createElement('br'));
     th.append(minutesToStr(s.from));
@@ -411,15 +653,22 @@ function renderRaster(day) {
     const th = document.createElement('th');
     th.className = 'room';
     th.textContent = room.name;
+    th.addEventListener('click', () => openSheet(room));
     tr.append(th);
 
-    state.slots.forEach((s) => {
+    state.slots.forEach((s, i) => {
       const from = atTime(day, minutesToStr(s.from));
       const to = atTime(day, minutesToStr(s.to));
       const td = document.createElement('td');
       const free = isFree(state.busy, room, from, to);
-      td.className = free ? 'is-f' : 'is-b';
-      if (free) {
+      td.className = (free ? 'is-f' : 'is-b') + (state.selected.has(i) ? ' is-sel' : '');
+
+      const rep = reportFor(state.index, room, [{ key: slotKey(s) }]);
+      if (rep) {
+        td.classList.add('r-' + rep.state);
+        td.textContent = STATE_ICON[rep.state];
+        td.title = STATE_LABEL[rep.state] + ' – gemeldet von ' + rep.name;
+      } else if (free) {
         td.textContent = 'frei';
       } else {
         const b = blockingEntries(state.busy, room, from, to)[0];
@@ -437,6 +686,194 @@ function renderRaster(day) {
 }
 
 /* ------------------------------------------------------------------ *
+ * Aktionsblatt: Raum melden
+ * ------------------------------------------------------------------ */
+
+function openSheet(room) {
+  state.sheetRoom = room;
+  state.sheetScope = state.selected.size ? 'lektionen' : 'tag';
+  $('#sheet').hidden = false;
+  document.body.classList.add('no-scroll');
+  renderSheet();
+}
+
+function closeSheet() {
+  state.sheetRoom = null;
+  $('#sheet').hidden = true;
+  document.body.classList.remove('no-scroll');
+}
+
+$('#sheet-close').addEventListener('click', closeSheet);
+$('#sheet').addEventListener('click', (e) => { if (e.target.id === 'sheet') closeSheet(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.sheetRoom) closeSheet(); });
+
+function renderSheet() {
+  const room = state.sheetRoom;
+  if (!room) return;
+  const wins = windows();
+  const body = $('#sheet-body');
+  body.textContent = '';
+
+  $('#sheet-title').textContent = room.name;
+  $('#sheet-sub').textContent = room.desc || '';
+
+  /* --- laut isy --- */
+  const isy = document.createElement('p');
+  isy.className = 'sheet-isy';
+  const blocked = wins.filter((w) => !isFree(state.busy, room, w.from, w.to));
+  if (!blocked.length) {
+    isy.innerHTML = '<span class="ok">Laut isy frei</span> – ' + wins.map((w) => w.label).join(', ');
+  } else {
+    const b = blockingEntries(state.busy, room, blocked[0].from, blocked[0].to)[0];
+    isy.innerHTML = '<span class="no">Laut isy belegt</span> in '
+      + blocked.map((w) => w.short).join(' ') + (b ? ' · ' + b.title : '');
+  }
+  body.append(isy);
+
+  /* --- Geltungsbereich --- */
+  const scopeBox = document.createElement('div');
+  scopeBox.className = 'seg';
+  const scopes = [
+    ['lektionen', state.selected.size
+      ? 'gewählte Lektionen (' + Array.from(state.selected).sort((a, b) => a - b).map((i) => (i + 1) + '.').join(' ') + ')'
+      : 'diese Lektion'],
+    ['tag', 'ganzer Tag'],
+  ];
+  scopes.forEach(([key, label]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'segbtn' + (state.sheetScope === key ? ' is-active' : '');
+    b.textContent = label;
+    b.addEventListener('click', () => { state.sheetScope = key; renderSheet(); });
+    scopeBox.append(b);
+  });
+  const scopeLbl = document.createElement('p');
+  scopeLbl.className = 'lbl';
+  scopeLbl.textContent = 'Meldung gilt für:';
+  body.append(scopeLbl, scopeBox);
+
+  /* --- Melde-Knöpfe --- */
+  const acts = document.createElement('div');
+  acts.className = 'acts';
+  const buttons = [
+    ['frei', '✓ war frei', 'Zimmer ist offen und leer.'],
+    ['drin', '● wir sind drin', 'Wir benutzen den Raum gerade.'],
+    ['besetzt', '✕ besetzt', 'Da ist schon jemand anderes drin.'],
+    ['zu', '🔒 abgeschlossen', 'Tür ist zu, Zimmer nicht nutzbar.'],
+  ];
+  buttons.forEach(([key, label, hint]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'actbtn a-' + key;
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    const small = document.createElement('small');
+    small.textContent = hint;
+    b.append(strong, small);
+    b.addEventListener('click', () => submit(room, key, b));
+    acts.append(b);
+  });
+  body.append(acts);
+
+  /* --- eigene Meldung zurücknehmen --- */
+  const slots = new Set(reportSlots(state.sheetScope));
+  const mine = state.reports.filter((r) => r.mine && r.room === room.id && slots.has(r.slot));
+  if (mine.length) {
+    const undo = document.createElement('button');
+    undo.type = 'button';
+    undo.className = 'linkbtn undo';
+    undo.textContent = 'Meine Meldung zurücknehmen';
+    undo.addEventListener('click', () => submit(room, 'weg', undo));
+    body.append(undo);
+  }
+
+  /* --- was andere gemeldet haben --- */
+  const all = state.reports.filter((r) => r.room === room.id);
+  if (all.length) {
+    const h = document.createElement('p');
+    h.className = 'lbl sheet-h';
+    h.textContent = 'Heute gemeldet';
+    const ul = document.createElement('ul');
+    ul.className = 'replist';
+    all.slice(0, 12).forEach((r) => {
+      const li = document.createElement('li');
+      li.className = 'r-' + r.state;
+      const what = document.createElement('span');
+      what.textContent = STATE_ICON[r.state] + ' ' + STATE_LABEL[r.state];
+      const who = document.createElement('small');
+      who.textContent = (r.slot === 'tag' ? 'ganzer Tag' : r.slot) + ' · ' + (r.mine ? 'du' : r.name);
+      li.append(what, who);
+      ul.append(li);
+    });
+    body.append(h, ul);
+  }
+
+  /* --- Erfahrungswerte --- */
+  const chance = chancesFor(state.stats, room, wins);
+  const h2 = document.createElement('p');
+  h2.className = 'lbl sheet-h';
+  h2.textContent = 'Erfahrung ' + WEEKDAYS[parseDay($('#date').value).getDay()]
+    + (state.selected.size ? ', gewählte Lektionen' : '');
+  body.append(h2);
+
+  if (!chance) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'Noch keine Meldungen für diesen Raum zu dieser Zeit. '
+      + 'Sobald jemand meldet, entsteht hier eine Einschätzung.';
+    body.append(p);
+  } else {
+    const bars = document.createElement('div');
+    bars.className = 'bars';
+    [
+      ['nutzbar', chance.usable, 'good'],
+      ['besetzt', chance.occupied, 'bad'],
+      ['abgeschlossen', chance.closed, 'warn'],
+    ].forEach(([label, value, tone]) => {
+      const row = document.createElement('div');
+      row.className = 'barrow';
+      const l = document.createElement('span');
+      l.className = 'barlbl';
+      l.textContent = label;
+      const track = document.createElement('span');
+      track.className = 'bartrack';
+      const fill = document.createElement('span');
+      fill.className = 'barfill t-' + tone;
+      fill.style.width = Math.round(value * 100) + '%';
+      track.append(fill);
+      const v = document.createElement('span');
+      v.className = 'barval';
+      v.textContent = percent(value);
+      row.append(l, track, v);
+      bars.append(row);
+    });
+    const n = document.createElement('p');
+    n.className = 'muted tiny';
+    n.textContent = 'Beruht auf ' + chance.n + ' Meldung' + (chance.n === 1 ? '' : 'en')
+      + ' (' + chance.counts.frei + '× frei, ' + chance.counts.drin + '× drin, '
+      + chance.counts.besetzt + '× besetzt, ' + chance.counts.zu + '× abgeschlossen).';
+    body.append(bars, n);
+  }
+}
+
+async function submit(room, reportState, button) {
+  const old = button.textContent;
+  button.disabled = true;
+  try {
+    await sendReport(room, reportSlots(state.sheetScope), reportState);
+    render();
+    renderSheet();
+  } catch (err) {
+    button.disabled = false;
+    button.textContent = old;
+    const p = document.createElement('p');
+    p.className = 'note is-err';
+    p.textContent = err.message;
+    $('#sheet-body').prepend(p);
+  }
+}
+
+/* ------------------------------------------------------------------ *
  * Bedienelemente
  * ------------------------------------------------------------------ */
 
@@ -447,24 +884,38 @@ function setNow() {
   start.setMinutes(Math.floor(start.getMinutes() / 5) * 5, 0, 0);
   $('#from').value = toTimeStr(start);
   $('#to').value = toTimeStr(new Date(start.getTime() + 45 * 60000));
-  state.activeChip = null;
+  state.selected = new Set();
 }
 
-$('#go').addEventListener('click', () => {
-  if ($('#date').value !== state.day) load();
-  else render();
-});
+/** "Jetzt" wählt zusätzlich die Lektion, in der wir gerade stecken. */
+function selectCurrentSlot() {
+  const now = new Date();
+  if (toDayStr(now) !== $('#date').value) return;
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const i = state.slots.findIndex((s) => mins < s.to);
+  if (i >= 0) {
+    state.selected = new Set([i]);
+    syncTimesFromSelection();
+  }
+}
 
 $('#now').addEventListener('click', () => {
   const wasDay = state.day;
   setNow();
-  if ($('#date').value !== wasDay) load();
-  else render();
+  if ($('#date').value !== wasDay) {
+    load().then(selectCurrentSlot).then(() => { updateChips(); render(); });
+  } else {
+    selectCurrentSlot();
+    updateChips();
+    render();
+  }
 });
 
+$('#reload').addEventListener('click', () => { load(); });
+
 $('#date').addEventListener('change', load);
-$('#from').addEventListener('change', () => { state.activeChip = null; render(); });
-$('#to').addEventListener('change', () => { state.activeChip = null; render(); });
+$('#from').addEventListener('change', () => { state.selected = new Set(); updateChips(); render(); });
+$('#to').addEventListener('change', () => { state.selected = new Set(); updateChips(); render(); });
 $('#search').addEventListener('input', render);
 $('#only').addEventListener('change', () => { savePrefs(); render(); });
 
@@ -490,6 +941,13 @@ document.querySelectorAll('.tab').forEach((t) => {
   });
 });
 
+// Filterbereich: am grossen Bildschirm offen, am Handy eingeklappt.
+if (window.matchMedia('(min-width: 760px)').matches) $('#more').open = true;
+
+// Meldungen der anderen regelmässig nachladen.
+setInterval(() => { if (!document.hidden && state.day) loadStatus(true); }, POLL_MS);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && state.day) loadStatus(true); });
+
 /* ------------------------------------------------------------------ *
  * Start
  * ------------------------------------------------------------------ */
@@ -512,7 +970,10 @@ document.querySelectorAll('.tab').forEach((t) => {
   if (data.loggedIn) {
     showApp();
     setNow();
-    load();
+    await load();
+    selectCurrentSlot();
+    updateChips();
+    render();
   } else {
     showLogin(Boolean(data.codeRequired));
   }
