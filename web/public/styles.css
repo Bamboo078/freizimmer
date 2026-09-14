@@ -490,6 +490,12 @@ footer {
 .barfill.t-warn { background: var(--warn); }
 .barval { flex: 0 0 46px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 
+/* Wie belastbar die Zahlen sind – bei wenigen Meldungen deutlich sichtbar. */
+.trust { margin: 10px 0 4px; font-size: 12.5px; }
+.trust.t-gering { color: var(--warn); font-weight: 600; }
+.trust.t-mittel { color: var(--fg); }
+.trust.t-hoch { color: var(--muted); }
+
 /* ---------------- Ladeanzeige ---------------- */
 
 .spinner {

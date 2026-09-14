@@ -130,10 +130,19 @@ Im Meldefenster stehen drei Balken:
 * **besetzt** – jemand anderes war drin
 * **abgeschlossen** – Tür war zu
 
-Gerechnet wird mit Laplace-Glättung (+1 pro Gruppe). Eine einzige Meldung sagt
-darum nicht gleich „100 %“, sondern bleibt vorsichtig. Auf der Raumkarte steht
-eine Kurzfassung („oft abgeschlossen · 60 %“), sobald es überhaupt Meldungen
-gibt.
+Die Balken zeigen schlicht die **tatsächlichen Anteile**: zweimal „war frei“ und
+sonst nichts ergibt 100 / 0 / 0. Wie wenig das bedeutet, steht als Satz darunter
+statt als verrechneter Prozentsatz – „Erst 2 Meldungen, die Prozente sind noch
+grobe Schätzungen“ – und wird ab vier bzw. acht Meldungen zurückhaltender.
+
+> Vorher lief das über eine Laplace-Glättung (+1 pro Gruppe). Rechnerisch
+> sauber, in der Anzeige aber irreführend: nach zwei „war frei“ standen da
+> 20 % *besetzt* und 20 % *abgeschlossen*, obwohl das nie jemand gemeldet
+> hatte. Unsicherheit gehört in einen Satz, nicht in die Balken.
+
+Auf der Raumkarte steht eine Kurzfassung. Unter drei Meldungen nennt sie die
+blanke Zahl („2× nutzbar gemeldet“), darüber den Prozentsatz („oft
+abgeschlossen · 63 %“).
 
 Was gespeichert wird: Raum, Tag, Lektion, Zustand, isy-Benutzername und der
 Zeitpunkt. Kein Passwort, kein Token. Die Meldungen eines Tages verfallen nach

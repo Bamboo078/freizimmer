@@ -2,7 +2,7 @@ import {
   buildBusy, deriveSlots, analyse, isFree, blockingEntries,
   parseDay, atTime, toDayStr, toTimeStr, minutesToStr, pad, WEEKDAYS,
   buildingOf, buildingsOf, sortRooms, SORT_MODES,
-  slotKey, indexReports, reportFor, chancesFor, chanceLabel, chanceTone,
+  slotKey, indexReports, reportFor, chancesFor, chanceLabel, chanceTone, trustNote,
   STATE_LABEL, STATE_SHORT, percent,
 } from './core.js';
 
@@ -912,12 +912,17 @@ function renderSheet() {
       row.append(l, track, v);
       bars.append(row);
     });
-    const n = document.createElement('p');
-    n.className = 'muted tiny';
-    n.textContent = 'Beruht auf ' + chance.n + ' Meldung' + (chance.n === 1 ? '' : 'en')
-      + ' (' + chance.counts.frei + '× frei, ' + chance.counts.drin + '× drin, '
-      + chance.counts.besetzt + '× besetzt, ' + chance.counts.zu + '× abgeschlossen).';
-    body.append(bars, n);
+    // Der wichtigste Satz hier: wie viel die Prozente überhaupt wert sind.
+    const trust = document.createElement('p');
+    trust.className = 'trust t-' + chance.trust;
+    trust.textContent = trustNote(chance);
+
+    const detail = document.createElement('p');
+    detail.className = 'muted tiny';
+    detail.textContent = 'Gezählt: ' + chance.counts.frei + '× frei, ' + chance.counts.drin
+      + '× drin, ' + chance.counts.besetzt + '× besetzt, ' + chance.counts.zu + '× abgeschlossen.';
+
+    body.append(bars, trust, detail);
   }
 }
 

@@ -354,31 +354,69 @@ export function chancesFor(stats, room, windows) {
 
   if (!totals.total) return null;
 
-  const smoothed = totals.total + 3;           // drei Gruppen: nutzbar / besetzt / zu
+  const n = totals.total;
   return {
-    n: totals.total,
-    usable: (totals.frei + totals.drin + 1) / smoothed,
-    occupied: (totals.besetzt + 1) / smoothed,
-    closed: (totals.zu + 1) / smoothed,
+    n,
+    usable: (totals.frei + totals.drin) / n,
+    occupied: totals.besetzt / n,
+    closed: totals.zu / n,
     counts: totals,
+    // Wie ernst man die Prozente nehmen darf.
+    trust: n >= 8 ? 'hoch' : n >= 4 ? 'mittel' : 'gering',
   };
+}
+
+/** Die grösste der drei Gruppen – für kurze Texte, wenn es kaum Daten gibt. */
+export function dominantGroup(chance) {
+  const groups = [
+    ['nutzbar', chance.counts.frei + chance.counts.drin],
+    ['besetzt', chance.counts.besetzt],
+    ['abgeschlossen', chance.counts.zu],
+  ];
+  groups.sort((a, b) => b[1] - a[1]);
+  return { label: groups[0][0], count: groups[0][1] };
+}
+
+/** Ein Satz dazu, wie belastbar die Zahlen sind. */
+export function trustNote(chance) {
+  if (chance.trust === 'gering') {
+    return chance.n === 1
+      ? 'Erst eine Meldung – das ist noch kein Muster, sondern ein Einzelfall.'
+      : 'Erst ' + chance.n + ' Meldungen – die Prozente sind noch grobe Schätzungen.';
+  }
+  if (chance.trust === 'mittel') {
+    return 'Aus ' + chance.n + ' Meldungen – ein Trend, noch keine Gewissheit.';
+  }
+  return 'Aus ' + chance.n + ' Meldungen – inzwischen halbwegs verlässlich.';
 }
 
 export const percent = (x) => Math.round(x * 100) + ' %';
 
-/** Kurzer Text für die Raumkarte. */
+/**
+ * Kurzer Text für die Raumkarte.
+ * Unter drei Meldungen nennen wir die blanke Zahl statt eines Prozentsatzes –
+ * "100 % nutzbar" nach einer einzigen Meldung wäre schlicht gelogen.
+ */
 export function chanceLabel(chance) {
   if (!chance) return null;
+  if (chance.n < 3) {
+    const top = dominantGroup(chance);
+    return top.count + '× ' + top.label + ' gemeldet';
+  }
   if (chance.closed >= 0.4) return 'oft abgeschlossen · ' + percent(chance.closed);
   if (chance.occupied >= 0.4) return 'oft besetzt · ' + percent(chance.occupied);
-  if (chance.n >= 3 && chance.usable >= 0.7) return 'meist nutzbar · ' + percent(chance.usable);
+  if (chance.usable >= 0.7) return 'meist nutzbar · ' + percent(chance.usable);
   return percent(chance.usable) + ' nutzbar (' + chance.n + ')';
 }
 
 /** Welche Farbe die Erfahrung bekommt: gut / mittel / schlecht. */
 export function chanceTone(chance) {
   if (!chance) return '';
+  if (chance.n < 3) {
+    // Zu wenig Daten für eine Entwarnung; eine Warnung ist trotzdem angebracht.
+    return dominantGroup(chance).label === 'nutzbar' ? 'mid' : 'bad';
+  }
   if (chance.closed >= 0.4 || chance.occupied >= 0.4) return 'bad';
-  if (chance.n >= 3 && chance.usable >= 0.7) return 'good';
+  if (chance.usable >= 0.7) return 'good';
   return 'mid';
 }
