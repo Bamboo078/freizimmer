@@ -31,6 +31,27 @@ Zugangscode davorschalten, dann sieht ein Fremder nicht einmal das Login-Formula
 
 ---
 
+## Bedienung
+
+| Element | Bedeutung |
+|---|---|
+| **Datum / Von / Bis** | Zeitfenster, in dem der Raum frei sein soll. |
+| **Jetzt** | Setzt das Fenster auf die nächsten 45 Minuten. |
+| **Lektion** | Wird aus den Stundenplandaten des Tages erkannt; ein Klick füllt Von/Bis. |
+| **Gebäude** | Ein Knopf pro Kürzel (HL, HM, HR, K, xt …) mit Anzahl Räume. Standardmässig sind nur **HL, HM und HR** an; *alle* schaltet um. |
+| **Raum suchen** | Zusätzlicher Textfilter, z. B. `3.0` oder `Lab`. |
+| **Sortieren** | Raum A–Z, Raum Z–A, *Stockwerk – oben zuerst* (3.01 vor 1.01) oder längste freie Zeit. |
+| **nur Unterrichtszimmer** | Blendet Labors, Vorbereitungs- und Besprechungsräume aus. |
+
+Gebäudeauswahl, Sortierung und der Haken bleiben gespeichert – allerdings nur in
+dem Browser, in dem du sie eingestellt hast (`localStorage`).
+
+Das Gebäude-Kürzel sind die Buchstaben vor der Nummer: `HL3.02` → `HL`,
+`xt1` → `xt`. `HMR1` bildet deshalb eine eigene Gruppe `HMR` und ist
+standardmässig nicht dabei – bei Bedarf einfach dazuschalten.
+
+---
+
 ## Auf Vercel veröffentlichen
 
 Du brauchst einen kostenlosen Vercel-Account (Hobby-Tarif reicht) und Node auf

@@ -18,11 +18,13 @@ let noSegment = process.env.MOCK_NO_SEGMENT === '1';
 
 /* --- Testdaten ------------------------------------------------------ */
 
+// Absichtlich gemischte Kürzel (HL/HM/HR und anderes), damit sich der
+// Gebäude-Filter testen lässt.
 const ROOMS = [
-  { id: '/resources/1', _id: 1, descShort: 'HL1.02', description: 'Instr Unt', partOf: null, partOfChildren: [] },
-  { id: '/resources/2', _id: 2, descShort: 'HL1.06', description: 'Mu Unt, 24 Pl', partOf: null, partOfChildren: [] },
-  { id: '/resources/3', _id: 3, descShort: 'HL2.01', description: 'Ch Lab, 18 Pl', partOf: null, partOfChildren: [] },
-  { id: '/resources/4', _id: 4, descShort: 'HL2.02', description: 'Ch Unt, 28 Pl', partOf: null, partOfChildren: [] },
+  { id: '/resources/1', _id: 1, descShort: 'A1.01', description: 'Aussen / Sonnensegel', partOf: null, partOfChildren: [] },
+  { id: '/resources/2', _id: 2, descShort: 'HL1.02', description: 'Instr Unt', partOf: null, partOfChildren: [] },
+  { id: '/resources/3', _id: 3, descShort: 'HM2.02', description: 'Ch Unt, 30 Pl', partOf: null, partOfChildren: [] },
+  { id: '/resources/4', _id: 4, descShort: 'HR2.03', description: 'Ph Unt, 28 Pl', partOf: null, partOfChildren: [] },
   { id: '/resources/5', _id: 5, descShort: 'HL3.01', description: 'Unt, 26 Pl',
     partOf: { id: '/resources/9', descShort: 'HL3.0' }, partOfChildren: [] },
   { id: '/resources/10', _id: 10, descShort: 'HL3.02', description: 'Unt, 26 Pl',
@@ -30,6 +32,10 @@ const ROOMS = [
   { id: '/resources/9', _id: 9, descShort: 'HL3.0', description: 'Unt gross, 52 Pl', partOf: null,
     partOfChildren: [{ id: '/resources/5', descShort: 'HL3.01' }, { id: '/resources/10', descShort: 'HL3.02' }] },
   { id: '/resources/11', _id: 11, descShort: 'HL3.03', description: 'G Vorb/Bespr, 3 Pl', partOf: null, partOfChildren: [] },
+  { id: '/resources/12', _id: 12, descShort: 'HM3.04', description: 'Unt, 18 Pl', partOf: null, partOfChildren: [] },
+  { id: '/resources/13', _id: 13, descShort: 'HR2.04', description: 'Ph Unt, 30 Pl', partOf: null, partOfChildren: [] },
+  { id: '/resources/14', _id: 14, descShort: 'K1.01', description: 'Mensa, 120 Pl', partOf: null, partOfChildren: [] },
+  { id: '/resources/15', _id: 15, descShort: 'xt1', description: 'Extern', partOf: null, partOfChildren: [] },
 ];
 
 const SLOTS = [

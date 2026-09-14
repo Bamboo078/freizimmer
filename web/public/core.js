@@ -98,6 +98,63 @@ export function deriveSlots(busy) {
   return clean;
 }
 
+/* ------------------------------------------------------------------ *
+ * Gebäude und Sortierung
+ * ------------------------------------------------------------------ */
+
+/** Buchstaben vor der Nummer: "HL3.02" -> "HL", "xt1" -> "xt". */
+export function buildingOf(name) {
+  const m = String(name).match(/^[A-Za-z]+/);
+  return m ? m[0] : '?';
+}
+
+/** Erste Zahl nach den Buchstaben: "HL3.02" -> 3, "S0.19" -> 0. */
+export function floorOf(name) {
+  const m = String(name).match(/^[A-Za-z]+\s*(\d+)/);
+  return m ? Number(m[1]) : -1;
+}
+
+/** Sortiert "P1.2" vor "P1.11" (Zahlen als Zahlen, nicht als Text). */
+const collator = new Intl.Collator('de', { numeric: true, sensitivity: 'base' });
+export const compareName = (a, b) => collator.compare(a, b);
+
+export const SORT_MODES = {
+  'name-asc': 'Raum A–Z',
+  'name-desc': 'Raum Z–A',
+  'floor-desc': 'Stockwerk – oben zuerst',
+  'free': 'Längste freie Zeit',
+};
+
+/** Vergleichsfunktion für Räume. null = Spezialfall "freie Zeit". */
+export function roomComparator(mode) {
+  switch (mode) {
+    case 'name-desc':
+      return (a, b) => compareName(b.name, a.name);
+    case 'floor-desc':
+      return (a, b) => (floorOf(b.name) - floorOf(a.name)) || compareName(a.name, b.name);
+    case 'free':
+      return null;
+    default:
+      return (a, b) => compareName(a.name, b.name);
+  }
+}
+
+export function sortRooms(rooms, mode) {
+  const cmp = roomComparator(mode) || roomComparator('name-asc');
+  return rooms.slice().sort(cmp);
+}
+
+/** Alle vorkommenden Gebäude-Kürzel mit Anzahl Räume. */
+export function buildingsOf(rooms) {
+  const map = new Map();
+  rooms.forEach((r) => {
+    const b = buildingOf(r.name);
+    map.set(b, (map.get(b) || 0) + 1);
+  });
+  return Array.from(map, ([key, count]) => ({ key, count }))
+    .sort((a, b) => compareName(a.key, b.key));
+}
+
 export const busyOf = (busy, room) => busy.get(room.id) || [];
 
 /** Frei heisst: keine Belegung überlappt das Fenster [from, to). */
@@ -115,8 +172,8 @@ export function blockingEntries(busy, room, from, to) {
   return busyOf(busy, room).filter((b) => b.start < to && b.end > from);
 }
 
-/** Teilt die Räume in frei und belegt. Längste freie Zeit zuerst. */
-export function analyse(busy, rooms, from, to, filterFn) {
+/** Teilt die Räume in frei und belegt und sortiert nach `sortMode`. */
+export function analyse(busy, rooms, from, to, filterFn, sortMode) {
   const free = [];
   const taken = [];
   rooms.forEach((room) => {
@@ -127,12 +184,23 @@ export function analyse(busy, rooms, from, to, filterFn) {
       taken.push({ room, blocks: blockingEntries(busy, room, from, to) });
     }
   });
-  free.sort((a, b) => {
-    const av = a.until ? a.until.getTime() : Infinity;
-    const bv = b.until ? b.until.getTime() : Infinity;
-    if (av !== bv) return bv - av;
-    return a.room.name.localeCompare(b.room.name);
-  });
-  taken.sort((a, b) => a.room.name.localeCompare(b.room.name));
+
+  const cmp = roomComparator(sortMode);
+  if (cmp) {
+    free.sort((a, b) => cmp(a.room, b.room));
+  } else {
+    // "Längste freie Zeit": wer am längsten frei bleibt, zuerst.
+    free.sort((a, b) => {
+      const av = a.until ? a.until.getTime() : Infinity;
+      const bv = b.until ? b.until.getTime() : Infinity;
+      if (av !== bv) return bv - av;
+      return compareName(a.room.name, b.room.name);
+    });
+  }
+
+  // Belegte Räume immer nach Name – "freie Zeit" ergibt dort keinen Sinn.
+  const takenCmp = cmp || roomComparator('name-asc');
+  taken.sort((a, b) => takenCmp(a.room, b.room));
+
   return { free, taken };
 }

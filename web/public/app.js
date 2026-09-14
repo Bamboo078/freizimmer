@@ -1,9 +1,13 @@
 import {
   buildBusy, deriveSlots, analyse, isFree, blockingEntries,
   parseDay, atTime, toDayStr, toTimeStr, minutesToStr, pad, WEEKDAYS,
+  buildingOf, buildingsOf, sortRooms, SORT_MODES,
 } from './core.js';
 
 const $ = (sel) => document.querySelector(sel);
+
+/** Gebäude, die beim ersten Start angehakt sind. */
+const DEFAULT_BUILDINGS = ['HL', 'HM', 'HR'];
 
 const state = {
   day: null,
@@ -14,7 +18,35 @@ const state = {
   tab: 'liste',
   activeChip: null,
   loading: false,
+  buildings: null,        // Set<string> – null heisst "noch nicht gesetzt"
+  sort: 'name-asc',
 };
+
+/* ------------------------------------------------------------------ *
+ * Einstellungen merken (nur in diesem Browser)
+ * ------------------------------------------------------------------ */
+
+function loadPrefs() {
+  try {
+    const raw = localStorage.getItem('freizimmer.prefs');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function savePrefs() {
+  try {
+    localStorage.setItem('freizimmer.prefs', JSON.stringify({
+      buildings: state.buildings ? Array.from(state.buildings) : null,
+      sort: state.sort,
+      only: $('#only').checked,
+    }));
+  } catch {
+    /* privates Fenster o.ä. – dann eben nicht merken */
+  }
+}
 
 /* ------------------------------------------------------------------ *
  * Serverzugriff
@@ -119,6 +151,7 @@ async function load() {
   state.warning = data.warning || null;
 
   renderChips();
+  renderBuildings();
   render();
 }
 
@@ -190,10 +223,64 @@ function renderChips() {
   box.append(all);
 }
 
+/** Gebäude-Knöpfe aus den geladenen Räumen aufbauen. */
+function renderBuildings() {
+  const list = buildingsOf(state.rooms);
+  const known = new Set(list.map((b) => b.key));
+
+  // Beim ersten Mal: HL/HM/HR vorauswählen, sofern es sie gibt.
+  if (state.buildings === null) {
+    const wanted = DEFAULT_BUILDINGS.filter((b) => known.has(b));
+    state.buildings = new Set(wanted.length ? wanted : known);
+  } else {
+    // Gebäude, die es nicht mehr gibt, aus der Auswahl werfen.
+    state.buildings = new Set(Array.from(state.buildings).filter((b) => known.has(b)));
+    if (!state.buildings.size) state.buildings = new Set(known);
+  }
+
+  const box = $('#buildings');
+  box.textContent = '';
+
+  list.forEach(({ key, count }) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (state.buildings.has(key) ? ' is-active' : '');
+    b.textContent = key + ' (' + count + ')';
+    b.title = count + ' Räume';
+    b.addEventListener('click', () => {
+      if (state.buildings.has(key)) state.buildings.delete(key);
+      else state.buildings.add(key);
+      if (!state.buildings.size) state.buildings = new Set(known);   // nie leer
+      savePrefs();
+      renderBuildings();
+      render();
+    });
+    box.append(b);
+  });
+
+  const all = document.createElement('button');
+  all.type = 'button';
+  all.className = 'chip chip-all';
+  const allOn = state.buildings.size === known.size;
+  all.textContent = allOn ? 'nur HL/HM/HR' : 'alle';
+  all.addEventListener('click', () => {
+    state.buildings = allOn
+      ? new Set(DEFAULT_BUILDINGS.filter((b) => known.has(b)))
+      : new Set(known);
+    if (!state.buildings.size) state.buildings = new Set(known);
+    savePrefs();
+    renderBuildings();
+    render();
+  });
+  box.append(all);
+}
+
 function filterFn() {
   const needle = $('#search').value.trim().toLowerCase();
   const only = $('#only').checked;
+  const buildings = state.buildings;
   return (room) => {
+    if (buildings && buildings.size && !buildings.has(buildingOf(room.name))) return false;
     if (only && !/unt/i.test(room.desc)) return false;
     if (!needle) return true;
     return (room.name + ' ' + room.desc).toLowerCase().includes(needle);
@@ -250,7 +337,7 @@ function renderList(day) {
     return;
   }
 
-  const { free, taken } = analyse(state.busy, state.rooms, from, to, filterFn());
+  const { free, taken } = analyse(state.busy, state.rooms, from, to, filterFn(), state.sort);
   setStatus(
     '<strong>' + free.length + '</strong> von ' + (free.length + taken.length) +
     ' Räumen frei · ' + toTimeStr(from) + '–' + toTimeStr(to)
@@ -299,7 +386,7 @@ function renderRaster(day) {
     setStatus('Für diesen Tag kennt isy keine Lektionen – vermutlich schulfrei.');
     return;
   }
-  const rooms = state.rooms.filter(filterFn());
+  const rooms = sortRooms(state.rooms.filter(filterFn()), state.sort);
   setStatus(rooms.length + ' Räume · grün = frei');
 
   const table = document.createElement('table');
@@ -379,7 +466,21 @@ $('#date').addEventListener('change', load);
 $('#from').addEventListener('change', () => { state.activeChip = null; render(); });
 $('#to').addEventListener('change', () => { state.activeChip = null; render(); });
 $('#search').addEventListener('input', render);
-$('#only').addEventListener('change', render);
+$('#only').addEventListener('change', () => { savePrefs(); render(); });
+
+// Sortier-Auswahl aufbauen
+Object.entries(SORT_MODES).forEach(([value, label]) => {
+  const opt = document.createElement('option');
+  opt.value = value;
+  opt.textContent = label;
+  $('#sort').append(opt);
+});
+$('#sort').value = state.sort;
+$('#sort').addEventListener('change', (e) => {
+  state.sort = e.target.value;
+  savePrefs();
+  render();
+});
 
 document.querySelectorAll('.tab').forEach((t) => {
   t.addEventListener('click', () => {
@@ -394,6 +495,19 @@ document.querySelectorAll('.tab').forEach((t) => {
  * ------------------------------------------------------------------ */
 
 (async () => {
+  // Gemerkte Einstellungen übernehmen, bevor zum ersten Mal gerendert wird.
+  const prefs = loadPrefs();
+  if (prefs) {
+    if (Array.isArray(prefs.buildings) && prefs.buildings.length) {
+      state.buildings = new Set(prefs.buildings);
+    }
+    if (prefs.sort && SORT_MODES[prefs.sort]) {
+      state.sort = prefs.sort;
+      $('#sort').value = prefs.sort;
+    }
+    if (typeof prefs.only === 'boolean') $('#only').checked = prefs.only;
+  }
+
   const { data } = await api('/api/me');
   if (data.loggedIn) {
     showApp();
