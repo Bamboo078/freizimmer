@@ -8,7 +8,7 @@
   "theme_color": "#2a6df4",
   "icons": [
     {
-      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='96' fill='%232a6df4'/%3E%3Ctext x='256' y='360' font-size='280' text-anchor='middle'%3E%F0%9F%9A%AA%3C/text%3E%3C/svg%3E",
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'%3E%3Crect width='512' height='512' rx='112' fill='%232a6df4'/%3E%3Cg fill='none' stroke='%23ffffff' stroke-width='32' stroke-linejoin='round'%3E%3Cpath d='M176 112h160v288H176z'/%3E%3Cpath d='M128 400h256'/%3E%3C/g%3E%3Ccircle cx='293' cy='264' r='21' fill='%23ffffff'/%3E%3C/svg%3E",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any"

@@ -124,7 +124,10 @@ input:focus-visible, button:focus-visible, select:focus-visible, summary:focus-v
   white-space: nowrap;
 }
 .btn.ghost { background: var(--surface); color: var(--fg); border-color: var(--line); font-weight: 500; }
-.btn.icon { padding: 11px 14px; font-size: 18px; line-height: 1; }
+.btn.icon {
+  padding: 11px 13px; line-height: 1;
+  display: inline-flex; align-items: center; justify-content: center;
+}
 .btn:disabled { opacity: .55; cursor: default; }
 
 .linkbtn {
@@ -153,42 +156,99 @@ input:focus-visible, button:focus-visible, select:focus-visible, summary:focus-v
 header { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
 header > div { flex: 1; min-width: 0; }
 
+
+/* ---------------- Gezeichnete Zeichen ---------------- */
+
+/*
+ * Ein einziges Icon-Set: 16er-Raster, gleiche Strichstärke, erbt die Farbe
+ * vom Umfeld. Bewusst keine Emoji – die bringen eigene Farben und eine
+ * eigene Bildsprache mit, die zu nichts hier passt.
+ */
+.ic {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.ic-btn { width: 17px; height: 17px; }
+.ic-chev {
+  width: 13px; height: 13px; color: var(--muted);
+  transition: transform .15s ease;
+}
+@media (prefers-reduced-motion: reduce) { .ic-chev { transition: none; } }
+
 /* ---------------- Steuerung ---------------- */
 
+/*
+ * Drei Entscheidungen von oben nach unten: welcher Tag, welche Lektionen,
+ * alles Weitere. Haarlinien trennen sie, damit man am Handy sofort sieht,
+ * wo die eine aufhört und die nächste anfängt.
+ */
 .controls {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 12px;
+  padding: 4px 14px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
 }
 
-.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
-.field { display: flex; flex-direction: column; gap: 5px; flex: 1 1 130px; }
-.row .btn { flex: 0 0 auto; }
-.daterow .field { flex: 1 1 150px; }
+.group { padding-block: 12px; min-width: 0; }
+.group + .group { border-top: 1px solid var(--line); }
+
+.group-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 8px;
+}
 
 .lbl { font-size: 12px; color: var(--muted); }
+.hint { opacity: .72; }
+
+/* Tag */
+
+.group-day { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+.field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.field-date { flex: 1 1 160px; }
+.group-day .btn { flex: 0 0 auto; }
+
+/* iOS gibt Datumsfeldern sonst eine eigene Mindestbreite und sprengt damit
+   den Kasten. appearance:none nimmt ihnen die, das Feld bleibt bedienbar. */
+input[type=date], input[type=time] {
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: left;
+}
 
 /* Lektionen */
 
-.slotbar { display: flex; flex-direction: column; gap: 7px; }
-.slotbar-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.group-slots { display: flex; flex-direction: column; }
+
+/* Die Wischzeile bekommt rechts eine weiche Kante, damit man merkt,
+   dass da noch mehr kommt. Am grossen Bildschirm umbricht sie stattdessen. */
+.chiprow { position: relative; min-width: 0; }
+.chiprow::after {
+  content: '';
+  position: absolute; inset-block: 0; right: -1px; width: 28px;
+  background: linear-gradient(to right, transparent, var(--surface) 80%);
+  pointer-events: none;
+}
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 
-/* Am Handy eine Zeile zum Wischen statt drei Zeilen Umbruch. */
 .scrollchips {
   flex-wrap: nowrap;
   overflow-x: auto;
   scroll-snap-type: x proximity;
-  padding-bottom: 4px;
+  padding-bottom: 6px;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: thin;
+  scrollbar-width: none;
 }
-.scrollchips > * { flex: 0 0 auto; scroll-snap-align: start; }
+.scrollchips::-webkit-scrollbar { display: none; }
+.scrollchips > * { flex: 0 0 auto; scroll-snap-align: center; }
 
 .chip {
   font: inherit; font-size: 13px; padding: 7px 12px; border-radius: 999px;
@@ -205,42 +265,45 @@ header > div { flex: 1; min-width: 0; }
 .chip-all { font-style: italic; }
 .chip-all:not(.is-active) { color: var(--muted); }
 
-.slot-note { margin: 0; font-size: 12.5px; color: var(--muted); }
+.slot-note { margin: 8px 0 0; font-size: 12.5px; color: var(--muted); }
 
-/* Aufklappbare Filter */
+/* Aufklappbarer Rest */
 
-.more { border-top: 1px solid var(--line); padding-top: 10px; }
 .more > summary {
   cursor: pointer; list-style: none; font-size: 14px; font-weight: 600;
-  display: flex; align-items: center; gap: 8px; min-height: 38px; padding: 4px 0;
+  display: flex; align-items: center; gap: 9px; min-height: 30px;
 }
 .more > summary::-webkit-details-marker { display: none; }
-.more > summary::before {
-  content: '▸'; color: var(--muted); transition: transform .15s ease; display: inline-block;
+.more[open] > summary .ic-chev { transform: rotate(90deg); }
+.more-mark {
+  font-size: 12px; font-weight: 400; color: var(--muted);
+  margin-left: auto; text-align: right; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.more[open] > summary::before { transform: rotate(90deg); }
-.more-mark { font-size: 12px; font-weight: 400; color: var(--muted); margin-left: auto; text-align: right; }
 .more[open] .more-mark { display: none; }
-.more-body { display: flex; flex-direction: column; gap: 12px; padding-top: 10px; }
 
-.buildings { display: flex; flex-direction: column; gap: 6px; }
+.more-body { display: flex; flex-direction: column; gap: 16px; padding-top: 14px; }
+.subgroup { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+
+.timerow { display: flex; gap: 10px; }
+.timerow .field { flex: 1 1 0; max-width: 190px; }
 
 .opts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
-.opts input[type=search] { flex: 1 1 180px; }
+.opts input[type=search] { flex: 1 1 200px; }
 
-.sortbox { display: flex; flex-direction: row; align-items: center; gap: 7px; flex: 1 1 auto; }
 select {
-  font: inherit; font-size: 15px; padding: 9px 10px; min-height: var(--tap);
+  font: inherit; font-size: 15px; padding: 9px 30px 9px 11px; min-height: var(--tap);
   border: 1px solid var(--line); border-radius: 10px;
-  background: var(--surface); color: var(--fg); cursor: pointer; flex: 1 1 auto;
+  background: var(--surface); color: var(--fg); cursor: pointer;
+  flex: 1 1 190px; min-width: 0;
 }
 .check {
   display: flex; flex-direction: row; align-items: center; gap: 8px;
   font-size: 14px; color: var(--muted); cursor: pointer; min-height: 38px;
+  flex: 0 0 auto;
 }
-.check input { width: 20px; height: 20px; }
-.check span, .sortbox span { text-transform: none; letter-spacing: 0; font-weight: 400; }
-
+.check input { width: 20px; height: 20px; accent-color: var(--accent); }
+.check span { text-transform: none; letter-spacing: 0; font-weight: 400; }
 /* ---------------- Reiter und Inhalt ---------------- */
 
 .tabs { display: flex; gap: 4px; margin: 16px 0 0; }
@@ -297,9 +360,11 @@ main {
 .room-card.r-zu .meta, .room-card.r-besetzt .meta, .room-card.r-drin .meta { color: var(--muted); }
 
 .badge {
-  font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px;
-  border: 1px solid currentColor; white-space: nowrap; margin-left: auto;
+  font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  border: 1px solid currentColor; white-space: nowrap;
+  display: inline-flex; align-items: center; gap: 4px;
 }
+.badge .ic { width: 11px; height: 11px; stroke-width: 2; }
 .badge.b-zu { color: var(--warn); }
 .badge.b-besetzt, .badge.b-drin { color: var(--busy); }
 .badge.b-frei { color: var(--free); }
@@ -332,6 +397,7 @@ table.raster td.is-b { background: var(--busy-bg); color: var(--busy); }
 table.raster td.r-zu { background: var(--warn-bg); color: var(--warn); font-weight: 700; }
 table.raster td.r-besetzt, table.raster td.r-drin { background: var(--busy-bg); color: var(--busy); font-weight: 700; }
 table.raster .is-sel { box-shadow: inset 0 0 0 2px var(--accent); }
+table.raster td .ic { width: 13px; height: 13px; vertical-align: -2px; }
 
 footer {
   font-size: 12px; color: var(--muted); text-align: center;
@@ -389,6 +455,7 @@ footer {
   border: 1px solid var(--line); border-radius: 12px;
   background: var(--surface); color: var(--fg);
 }
+.actbtn-head { display: flex; align-items: center; gap: 7px; }
 .actbtn strong { font-size: 14px; }
 .actbtn small { font-size: 11px; color: var(--muted); line-height: 1.35; }
 .actbtn:hover { border-color: currentColor; }
@@ -408,6 +475,7 @@ footer {
   font-size: 13px; padding: 7px 10px; border-radius: 8px; background: var(--surface-2);
 }
 .replist li small { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+.repwhat { display: inline-flex; align-items: center; gap: 6px; }
 .replist li.r-zu { color: var(--warn); }
 .replist li.r-besetzt, .replist li.r-drin { color: var(--busy); }
 .replist li.r-frei { color: var(--free); }
@@ -434,23 +502,41 @@ footer {
 
 /* ---------------- Handy ---------------- */
 
+/*
+ * Am grossen Bildschirm ist genug Platz: die Lektionen umbrechen, statt zu
+ * wischen, und die weiche Kante rechts hat nichts mehr zu verbergen.
+ */
+@media (min-width: 721px) {
+  .scrollchips { flex-wrap: wrap; overflow-x: visible; padding-bottom: 0; }
+  .chiprow::after { display: none; }
+}
+
+/* ---------------- Handy ---------------- */
+
 @media (max-width: 720px) {
   body { padding: 0 12px; }
   #app { padding-block: 10px; }
   h1 { font-size: 19px; }
 
-  .controls { padding: 11px; border-radius: 12px; }
-  .daterow { gap: 8px; }
-  .daterow .field { flex: 1 1 100%; }
-  .daterow .btn { flex: 1 1 0; }
-  .daterow .btn.icon { flex: 0 0 auto; }
+  .controls { padding: 2px 12px; border-radius: 12px; }
+  .group { padding-block: 11px; }
+
+  /* Datum, Jetzt und Neu laden bleiben zusammen in einer Zeile. */
+  .group-day { gap: 8px; flex-wrap: nowrap; }
+  .field-date { flex: 1 1 auto; }
+  .group-day .btn { padding-inline: 14px; }
 
   .tabs { margin-top: 14px; }
   .tab { flex: 1 1 0; text-align: center; padding: 10px 8px; }
 
   main { padding: 12px; border-radius: 12px; }
-  .grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .grid { grid-template-columns: repeat(auto-fill, minmax(146px, 1fr)); gap: 8px; }
   .room-card { padding: 10px; }
+  .room-card .name { font-size: 15.5px; }
+
+  .timerow .field { max-width: none; }
+  .opts input[type=search] { flex: 1 1 100%; }
+  select { flex: 1 1 100%; }
 
   .scroll { margin: 0 -12px; padding: 0 12px; }
   table.raster { font-size: 11.5px; }
@@ -458,9 +544,13 @@ footer {
   table.raster th.room { max-width: 70px; }
 }
 
-@media (max-width: 380px) {
+/* Sehr schmale Geräte: zwei Karten nebeneinander bleiben lesbar, die
+   Melde-Knöpfe brauchen dagegen die volle Breite. */
+@media (max-width: 400px) {
   .grid { grid-template-columns: 1fr 1fr; }
   .acts { grid-template-columns: 1fr; }
+  .actbtn { min-height: 0; padding: 9px 12px; }
+  .group-day .btn { padding-inline: 12px; }
 }
 
 /* Auf grossen Bildschirmen das Aktionsblatt als Dialog mittig zeigen. */

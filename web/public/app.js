@@ -3,10 +3,34 @@ import {
   parseDay, atTime, toDayStr, toTimeStr, minutesToStr, pad, WEEKDAYS,
   buildingOf, buildingsOf, sortRooms, SORT_MODES,
   slotKey, indexReports, reportFor, chancesFor, chanceLabel, chanceTone,
-  STATE_LABEL, STATE_SHORT, STATE_ICON, percent,
+  STATE_LABEL, STATE_SHORT, percent,
 } from './core.js';
 
 const $ = (sel) => document.querySelector(sel);
+
+/* ------------------------------------------------------------------ *
+ * Zeichen für die vier Zustände
+ *
+ * Bewusst selbst gezeichnete SVG statt Emoji: gleiche Strichstärke,
+ * gleiche Grösse, und sie nehmen die Farbe ihres Umfelds an.
+ * ------------------------------------------------------------------ */
+
+const ICON_PATHS = {
+  frei: '<path d="M3.2 8.4l3.1 3.1 6.5-7"/>',
+  drin: '<circle cx="8" cy="8" r="3.2" fill="currentColor" stroke="none"/>',
+  besetzt: '<path d="M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6"/>',
+  zu: '<rect x="3.4" y="7.1" width="9.2" height="6.1" rx="1.5"/><path d="M5.8 7.1V5.5a2.2 2.2 0 0 1 4.4 0v1.6"/>',
+};
+
+/** Ein Zustands-Zeichen als SVG-Element. */
+function stateIcon(key) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'ic');
+  svg.setAttribute('viewBox', '0 0 16 16');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.innerHTML = ICON_PATHS[key] || '';
+  return svg;
+}
 
 /* ------------------------------------------------------------------ *
  * Startvorgaben
@@ -380,7 +404,25 @@ function updateChips() {
     c.classList.toggle('is-active', on);
     c.setAttribute('aria-pressed', on ? 'true' : 'false');
   });
+  revealSelectedChip();
   updateSlotNote();
+}
+
+/**
+ * Am Handy ist die Lektionsleiste eine Wischzeile. Steht die Auswahl weit
+ * rechts, sieht man sonst nur unmarkierte Chips und darunter "Gewählt: 6. 7."
+ * – deshalb die erste gewählte Lektion in den sichtbaren Bereich schieben.
+ * Bewusst über scrollLeft statt scrollIntoView: das würde die Seite mitziehen.
+ */
+function revealSelectedChip() {
+  const box = $('#chips');
+  if (box.scrollWidth <= box.clientWidth) return;
+  const first = box.querySelector('.slotchip.is-active');
+  if (!first) return;
+  const target = first.offsetLeft - (box.clientWidth - first.offsetWidth) / 2;
+  box.scrollLeft = Math.max(0, target);        // ohne Animation: sonst sieht
+                                               // man beim Laden kurz die
+                                               // falschen Lektionen
 }
 
 function updateSlotNote() {
@@ -392,14 +434,12 @@ function updateSlotNote() {
 
   if (!n) {
     note.hidden = false;
-    note.textContent = 'Keine Lektion gewählt – es gilt die Zeit von/bis weiter unten.';
+    note.textContent = 'Keine Lektion gewählt – es gilt die Zeit unter „Eigene Zeit“.';
     return;
   }
-  const list = Array.from(state.selected).sort((a, b) => a - b).map((i) => (i + 1) + '.').join(' ');
-  note.hidden = false;
-  note.textContent = n === 1
-    ? 'Gewählt: ' + list + ' Lektion'
-    : 'Gewählt: ' + list + ' Lektion – gesucht sind Räume, die in allen frei sind.';
+  // Bei einer Lektion sagt der markierte Chip schon alles.
+  note.hidden = n === 1;
+  note.textContent = 'Gesucht sind Räume, die in allen ' + n + ' Lektionen frei sind.';
 }
 
 /** Von/Bis auf die Spanne der Auswahl setzen, damit die Felder stimmig bleiben. */
@@ -542,7 +582,7 @@ function roomCard(room, metaText, cls, wins) {
   if (report) {
     const badge = document.createElement('span');
     badge.className = 'badge b-' + report.state;
-    badge.textContent = STATE_ICON[report.state] + ' ' + STATE_SHORT[report.state];
+    badge.append(stateIcon(report.state), document.createTextNode(STATE_SHORT[report.state]));
     top.append(badge);
   }
   card.append(top);
@@ -615,7 +655,7 @@ function renderList(day) {
     ordered.forEach((item) => {
       grid.append(roomCard(
         item.room,
-        item.until ? 'frei bis ' + toTimeStr(item.until) : 'danach nichts gebucht',
+        item.until ? 'frei bis ' + toTimeStr(item.until) : 'frei bis Schulschluss',
         'is-free',
         wins
       ));
@@ -687,7 +727,7 @@ function renderRaster(day) {
       const rep = reportFor(state.index, room, [{ key: slotKey(s) }]);
       if (rep) {
         td.classList.add('r-' + rep.state);
-        td.textContent = STATE_ICON[rep.state];
+        td.append(stateIcon(rep.state));
         td.title = STATE_LABEL[rep.state] + ' – gemeldet von ' + rep.name;
       } else if (free) {
         td.textContent = 'frei';
@@ -756,8 +796,8 @@ function renderSheet() {
   scopeBox.className = 'seg';
   const scopes = [
     ['lektionen', state.selected.size
-      ? 'gewählte Lektionen (' + Array.from(state.selected).sort((a, b) => a - b).map((i) => (i + 1) + '.').join(' ') + ')'
-      : 'diese Lektion'],
+      ? Array.from(state.selected).sort((a, b) => a - b).map((i) => (i + 1) + '.').join(' ') + ' Lektion'
+      : 'diese Zeit'],
     ['tag', 'ganzer Tag'],
   ];
   scopes.forEach(([key, label]) => {
@@ -777,20 +817,23 @@ function renderSheet() {
   const acts = document.createElement('div');
   acts.className = 'acts';
   const buttons = [
-    ['frei', '✓ war frei', 'Zimmer ist offen und leer.'],
-    ['drin', '● wir sind drin', 'Wir benutzen den Raum gerade.'],
-    ['besetzt', '✕ besetzt', 'Da ist schon jemand anderes drin.'],
-    ['zu', '🔒 abgeschlossen', 'Tür ist zu, Zimmer nicht nutzbar.'],
+    ['frei', 'war frei', 'Zimmer ist offen und leer.'],
+    ['drin', 'wir sind drin', 'Wir benutzen den Raum gerade.'],
+    ['besetzt', 'besetzt', 'Da ist schon jemand anderes drin.'],
+    ['zu', 'abgeschlossen', 'Tür ist zu, Zimmer nicht nutzbar.'],
   ];
   buttons.forEach(([key, label, hint]) => {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'actbtn a-' + key;
+    const head = document.createElement('span');
+    head.className = 'actbtn-head';
     const strong = document.createElement('strong');
     strong.textContent = label;
+    head.append(stateIcon(key), strong);
     const small = document.createElement('small');
     small.textContent = hint;
-    b.append(strong, small);
+    b.append(head, small);
     b.addEventListener('click', () => submit(room, key, b));
     acts.append(b);
   });
@@ -820,7 +863,8 @@ function renderSheet() {
       const li = document.createElement('li');
       li.className = 'r-' + r.state;
       const what = document.createElement('span');
-      what.textContent = STATE_ICON[r.state] + ' ' + STATE_LABEL[r.state];
+      what.className = 'repwhat';
+      what.append(stateIcon(r.state), document.createTextNode(STATE_LABEL[r.state]));
       const who = document.createElement('small');
       who.textContent = (r.slot === 'tag' ? 'ganzer Tag' : r.slot) + ' · ' + (r.mine ? 'du' : r.name);
       li.append(what, who);

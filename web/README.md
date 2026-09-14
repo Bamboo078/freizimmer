@@ -80,8 +80,13 @@ const DEFAULT_SORT = 'floor-desc';
 Der Haken *nur Unterrichtszimmer* steckt als `checked` im `<input id="only">`
 in [`public/index.html`](public/index.html).
 
-Am Handy sind die Lektionsknöpfe eine Zeile zum Wischen, und alles unter
-*Eigene Zeit, Gebäude & Filter* ist eingeklappt, bis man es braucht.
+Am Handy sind die Lektionsknöpfe eine Zeile zum Wischen – die gewählte Lektion
+wird dabei automatisch in den sichtbaren Bereich geschoben. Alles unter
+*Zeit, Gebäude & Filter* ist eingeklappt, bis man es braucht.
+
+Die vier Zustände tragen selbst gezeichnete Zeichen (Haken, Punkt, Kreuz,
+Schloss) aus einem einzigen 16er-Raster – bewusst keine Emoji, die bringen
+eigene Farben und eine fremde Bildsprache mit.
 
 Das Gebäude-Kürzel sind die Buchstaben vor der Nummer: `HL3.02` → `HL`,
 `xt1` → `xt`. `HMR1` bildet deshalb eine eigene Gruppe `HMR` und ist
@@ -100,10 +105,10 @@ Meldefenster:
 
 | Meldung | Bedeutung |
 |---|---|
-| ✓ **war frei** | Tür offen, niemand drin – hat geklappt. |
-| ● **wir sind drin** | Wir benutzen den Raum gerade, bitte nicht doppelt hinlaufen. |
-| ✕ **besetzt** | Es sitzt schon jemand anderes drin. |
-| 🔒 **abgeschlossen** | Tür zu, Raum heute nicht nutzbar. |
+| **war frei** | Tür offen, niemand drin – hat geklappt. |
+| **wir sind drin** | Wir benutzen den Raum gerade, bitte nicht doppelt hinlaufen. |
+| **besetzt** | Es sitzt schon jemand anderes drin. |
+| **abgeschlossen** | Tür zu, Raum heute nicht nutzbar. |
 
 Dazu wählt man, **wofür** die Meldung gilt: nur für die gewählten Lektionen
 oder für den ganzen Tag. Ein abgeschlossenes Zimmer meldet man sinnvollerweise

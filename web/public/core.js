@@ -272,8 +272,6 @@ export const STATE_SHORT = {
   zu: 'abgeschlossen',
 };
 
-export const STATE_ICON = { frei: '✓', drin: '●', besetzt: '✕', zu: '🔒' };
-
 /** Schlüssel einer Lektion, so wie ihn der Server erwartet. */
 export const slotKey = (slot) => minutesToStr(slot.from) + '-' + minutesToStr(slot.to);
 

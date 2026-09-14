@@ -8,7 +8,7 @@
 <title>Freizimmer</title>
 <link rel="stylesheet" href="styles.css">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🚪</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232a6df4'/><g fill='none' stroke='%23fff' stroke-width='2' stroke-linejoin='round'><path d='M11 7h10v18H11z'/><path d='M8 25h16'/></g><circle cx='18.3' cy='16.5' r='1.3' fill='%23fff'/></svg>">
 </head>
 <body>
 
@@ -57,41 +57,58 @@
   </header>
 
   <div class="controls">
-    <div class="row daterow">
-      <label class="field"><span>Datum</span><input type="date" id="date"></label>
+    <div class="group group-day">
+      <label class="field field-date">
+        <span>Datum</span>
+        <input type="date" id="date">
+      </label>
       <button class="btn ghost" id="now" type="button">Jetzt</button>
-      <button class="btn ghost icon" id="reload" type="button" title="Neu laden" aria-label="Neu laden">↻</button>
+      <button class="btn ghost icon" id="reload" type="button" title="Neu laden" aria-label="Neu laden">
+        <svg class="ic ic-btn" viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M13.2 8A5.2 5.2 0 1 1 11.34 4.02"/>
+          <path d="M10.52 1.76L11.34 4.02L8.98 3.6"/>
+        </svg>
+      </button>
     </div>
 
-    <div class="slotbar">
-      <div class="slotbar-head">
-        <span class="lbl">Lektionen – mehrere möglich</span>
+    <div class="group group-slots">
+      <div class="group-head">
+        <span class="lbl">Lektionen <span class="hint">· mehrere möglich</span></span>
         <button class="linkbtn tiny" id="slot-clear" type="button" hidden>zurücksetzen</button>
       </div>
-      <div class="chips scrollchips" id="chips"></div>
+      <div class="chiprow">
+        <div class="chips scrollchips" id="chips"></div>
+      </div>
       <p class="slot-note" id="slot-note" hidden></p>
     </div>
 
-    <details class="more" id="more">
-      <summary><span>Eigene Zeit, Gebäude &amp; Filter</span><span class="more-mark" id="more-mark"></span></summary>
+    <details class="group more" id="more">
+      <summary>
+        <svg class="ic ic-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.2L10.6 8L6 12.8"/></svg>
+        <span>Zeit, Gebäude &amp; Filter</span>
+        <span class="more-mark" id="more-mark"></span>
+      </summary>
       <div class="more-body">
-        <div class="row">
-          <label class="field"><span>Von</span><input type="time" id="from" step="300"></label>
-          <label class="field"><span>Bis</span><input type="time" id="to" step="300"></label>
+        <div class="subgroup">
+          <span class="lbl">Eigene Zeit <span class="hint">· statt Lektionen</span></span>
+          <div class="timerow">
+            <label class="field"><span>Von</span><input type="time" id="from" step="300"></label>
+            <label class="field"><span>Bis</span><input type="time" id="to" step="300"></label>
+          </div>
         </div>
 
-        <div class="buildings">
+        <div class="subgroup">
           <span class="lbl">Gebäude</span>
           <div class="chips" id="buildings"></div>
         </div>
 
-        <div class="opts">
-          <input type="search" id="search" placeholder="Raum suchen, z. B. HL3">
-          <label class="sortbox">
-            <span class="lbl">Sortieren</span>
-            <select id="sort"></select>
-          </label>
-          <label class="check"><input type="checkbox" id="only" checked> nur Unterrichtszimmer</label>
+        <div class="subgroup">
+          <span class="lbl">Suchen und sortieren</span>
+          <div class="opts">
+            <input type="search" id="search" placeholder="Raum suchen, z. B. HL3">
+            <select id="sort" aria-label="Sortieren"></select>
+            <label class="check"><input type="checkbox" id="only" checked> nur Unterrichtszimmer</label>
+          </div>
         </div>
       </div>
     </details>
